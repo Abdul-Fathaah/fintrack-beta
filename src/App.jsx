@@ -4,6 +4,7 @@ import {
   DollarSign, Activity, Zap, Settings as SettingsIcon, Sun, Moon,
   User, RefreshCw, Camera, Check, Pencil, Receipt, Trash2, LogOut, Download, Upload, X
 } from 'lucide-react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 // 1. IMPORT LOGIN COMPONENT
 import Login from './Login';
 
@@ -476,6 +477,7 @@ export default function App() {
           </div>
         </nav>
       </div>
+      <SpeedInsights />
     </ThemeContext.Provider>
   );
 }
