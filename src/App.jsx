@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useContext } from 'react';
 import {
   Plus, PieChart, LayoutDashboard, Home, TrendingUp, AlertCircle,
   Settings as SettingsIcon, Sun, Moon,
-  Check, Pencil, Receipt, LogOut, Download, Upload, X, ChevronLeft, Lock, Unlock, FileText, Trash2, Lightbulb
+  Check, Pencil, Receipt, LogOut, Download, Upload, X, ChevronLeft, Lock, Unlock, FileText, Trash2, Lightbulb, Wallet
 } from 'lucide-react';
 import Login from './Login';
 
@@ -253,6 +253,11 @@ const DashboardTab = ({ obligations, setObligations }) => {
   const { isDarkMode } = useTheme();
   const [isEditingObligations, setIsEditingObligations] = useState(false);
 
+  // CALCULATE TOTAL OBLIGATIONS
+  const totalMonthlyObligations = useMemo(() => {
+    return obligations.reduce((sum, item) => sum + item.amount, 0);
+  }, [obligations]);
+
   const updateObligation = (id, field, value) => {
     setObligations(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
   };
@@ -275,11 +280,22 @@ const DashboardTab = ({ obligations, setObligations }) => {
   return (
     <div className="space-y-6 pb-24 animate-fade-in">
       <div className="flex justify-between items-center">
-        <h2 className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Obligations</h2>
+        <h2 className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Dashboard</h2>
         <button onClick={() => setIsEditingObligations(!isEditingObligations)} className={`text-xs px-3 py-1 rounded-full ${isEditingObligations ? 'bg-lime-500 text-black' : (isDarkMode ? 'bg-neutral-800 text-white' : 'bg-gray-200 text-gray-900')}`}>
           {isEditingObligations ? 'Done' : 'Edit List'}
         </button>
       </div>
+
+      {/* NEW TOTAL OBLIGATIONS CARD */}
+      <Card className="flex items-center justify-between">
+        <div>
+          <p className={`text-xs font-medium ${isDarkMode ? 'text-neutral-400' : 'text-gray-500'}`}>Total Monthly Obligations</p>
+          <h3 className={`text-3xl font-bold mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>₹ {totalMonthlyObligations.toLocaleString('en-IN')}</h3>
+        </div>
+        <div className={`p-4 rounded-full ${isDarkMode ? 'bg-neutral-800' : 'bg-lime-50'}`}>
+          <Wallet size={24} className="text-lime-500" />
+        </div>
+      </Card>
 
       <div className={`rounded-2xl overflow-hidden border ${isDarkMode ? 'border-neutral-800 bg-neutral-900/50' : 'border-gray-200 bg-white'}`}>
         {obligations.length === 0 && <p className="p-4 text-center opacity-50 text-sm">No obligations added.</p>}
