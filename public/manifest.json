@@ -1,0 +1,22 @@
+{
+    "name": "FinTrack",
+    "short_name": "FinTrack",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#171717",
+    "theme_color": "#84cc16",
+    "description": "Offline-first Personal Finance Manager",
+    "orientation": "portrait",
+    "icons": [
+        {
+            "src": "/vite.svg",
+            "sizes": "192x192",
+            "type": "image/svg+xml"
+        },
+        {
+            "src": "/vite.svg",
+            "sizes": "512x512",
+            "type": "image/svg+xml"
+        }
+    ]
+}
