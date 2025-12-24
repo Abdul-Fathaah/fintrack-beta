@@ -128,14 +128,14 @@ const HomeTab = ({ transactions, totalBalance, obligations, monthlySavingsTarget
         <div className="flex justify-between items-start mb-4">
           <div>
             <h2 className={`font-semibold text-lg flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-              Safe-to-Spend
+              Monthly Allowance
               <AlertCircle size={16} className={isDarkMode ? 'text-neutral-500' : 'text-gray-400'} />
             </h2>
-            <p className="text-[10px] opacity-60">Income - (Recurring Bills + Savings Goal)</p>
+            <p className="text-[10px] opacity-60">Income - (Obligations + Savings Goal)</p>
           </div>
           <div className={`text-right ${remainingSafeBudget < 0 ? 'text-red-500' : 'text-lime-500'}`}>
             <p className="text-2xl font-bold">₹ {remainingSafeBudget.toLocaleString('en-IN')}</p>
-            <p className="text-xs opacity-70">remaining</p>
+            <p className="text-xs opacity-70">Avl. Balance</p>
           </div>
         </div>
         <div className={`h-3 w-full rounded-full mb-2 ${isDarkMode ? 'bg-neutral-800' : 'bg-gray-100'} overflow-hidden`}>
@@ -146,7 +146,7 @@ const HomeTab = ({ transactions, totalBalance, obligations, monthlySavingsTarget
         </div>
         <div className="grid grid-cols-2 gap-2 mt-4 text-xs">
           <div className={`p-2 rounded-lg ${isDarkMode ? 'bg-neutral-800' : 'bg-gray-50'}`}>
-            <span className="block opacity-60 mb-1">Safe Limit</span>
+            <span className="block opacity-60 mb-1">True Budget</span>
             <span className="font-mono font-semibold">₹{safeToSpendTotal.toLocaleString()}</span>
           </div>
           <div className={`p-2 rounded-lg ${isDarkMode ? 'bg-neutral-800' : 'bg-gray-50'}`}>
@@ -163,7 +163,7 @@ const HomeTab = ({ transactions, totalBalance, obligations, monthlySavingsTarget
             <MessageSquareText size={20} className="text-blue-500" />
           </div>
           <div>
-            <h3 className={`font-semibold text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Smart Add</h3>
+            <h3 className={`font-semibold text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Add From SMS</h3>
             <p className="text-[10px] opacity-60">Paste bank SMS to auto-fill details</p>
           </div>
         </div>
