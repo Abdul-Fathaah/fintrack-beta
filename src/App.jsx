@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo, useContext, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useContext } from 'react';
 import {
   Plus, PieChart, Target, Home, Smartphone, TrendingUp, AlertCircle,
   DollarSign, Activity, Zap, Settings as SettingsIcon, Sun, Moon,
-  User, RefreshCw, Camera, Check, Pencil, Receipt, Trash2, LogOut, Download, Upload, X, ChevronLeft, Save, Lock
+  User, RefreshCw, Camera, Check, Pencil, Receipt, Trash2, LogOut, Download, Upload, X, ChevronLeft, Lock, Unlock
 } from 'lucide-react';
 import Login from './Login';
 
@@ -13,7 +13,7 @@ const STORAGE_KEYS = {
   OBLIGATIONS: 'ft_client_obligations_v1',
   CORPUS: 'ft_client_corpus_v1',
   PROFILE: 'ft_client_profile_v1',
-  SESSION: 'ft_client_session_v1',
+  SESSION: 'ft_client_session_v1', // Added for persistence
   THEME: 'ft_client_theme_v1'
 };
 
@@ -23,13 +23,13 @@ const useTheme = () => useContext(ThemeContext);
 
 // --- Defaults ---
 const INITIAL_TRANSACTIONS = [];
-const INITIAL_GOALS = [];
 const INITIAL_OBLIGATIONS = [
   { id: 'homeLoan', label: 'Home Loan', amount: 0, isRecurring: true },
   { id: 'sip', label: 'SIP (Auto-Invest)', amount: 0, isRecurring: true },
   { id: 'rent', label: 'Rent', amount: 0, isRecurring: true },
   { id: 'internet', label: 'Internet / WiFi', amount: 0, isRecurring: true },
   { id: 'utility', label: 'Electricity / Water', amount: 0, isRecurring: true },
+  { id: 'other', label: 'Other', amount: 0, isRecurring: false },
 ];
 const CATEGORIES = ['Food', 'Transport', 'Shopping', 'Bills', 'Entertainment', 'Health', 'Investment', 'Salary', 'Other'];
 
@@ -63,24 +63,25 @@ const Dashboard = ({ transactions, totalBalance, obligations, monthlySavingsTarg
   const currentMonth = today.getMonth();
   const currentYear = today.getFullYear();
 
-  // 1. Calculate Income
+  // 1. Income (This Month)
   const currentMonthIncome = useMemo(() => transactions.filter(t => {
     if (t.type !== 'income') return false;
     const txDate = new Date(t.date);
     return txDate.getFullYear() === currentYear && txDate.getMonth() === currentMonth;
   }).reduce((sum, t) => sum + t.amount, 0), [transactions, currentYear, currentMonth]);
 
-  // 2. Calculate Recurring Obligations (Only checked ones)
+  // 2. Fixed Commitments (Recurring Obligations + Savings Target)
   const recurringObligationsTotal = useMemo(() =>
     obligations.filter(o => o.isRecurring).reduce((sum, item) => sum + item.amount, 0),
     [obligations]);
 
-  // 3. The New Safe-to-Spend Algorithm
-  // Formula: Income - (Fixed Recurring Bills + Minimum Savings Target)
-  const committedMoney = recurringObligationsTotal + (monthlySavingsTarget || 0);
-  const safeToSpendTotal = Math.max(0, currentMonthIncome - committedMoney);
+  const totalCommitments = recurringObligationsTotal + (monthlySavingsTarget || 0);
 
-  // 4. Calculate Actual Spending
+  // 3. Safe-to-Spend (Income - Commitments)
+  // We floor it at 0 for the display, but keep track if it's negative
+  const safeToSpendTotal = Math.max(0, currentMonthIncome - totalCommitments);
+
+  // 4. Actual Spending (This Month)
   const currentMonthExpense = useMemo(() => transactions.filter(t => {
     if (t.type !== 'expense') return false;
     const txDate = new Date(t.date);
@@ -88,24 +89,31 @@ const Dashboard = ({ transactions, totalBalance, obligations, monthlySavingsTarg
   }).reduce((sum, t) => sum + t.amount, 0), [transactions, currentYear, currentMonth]);
 
   const remainingSafeBudget = safeToSpendTotal - currentMonthExpense;
-  const budgetProgress = safeToSpendTotal > 0 ? Math.min(100, (currentMonthExpense / safeToSpendTotal) * 100) : (currentMonthExpense > 0 ? 100 : 0);
+
+  // Progress bar logic
+  let budgetProgress = 0;
+  if (safeToSpendTotal > 0) {
+    budgetProgress = (currentMonthExpense / safeToSpendTotal) * 100;
+  } else if (currentMonthExpense > 0) {
+    budgetProgress = 100; // Over budget immediately if 0 safe spend
+  }
 
   return (
     <div className="space-y-6 pb-24 animate-fade-in">
       {/* Net Worth Card */}
       <div className={`${isDarkMode ? 'bg-neutral-950 border-lime-500/50 shadow-[0_0_20px_rgba(132,204,22,0.15)]' : 'bg-white border-lime-500 shadow-xl shadow-lime-500/20'} border rounded-3xl p-6 relative overflow-hidden transition-all duration-300`}>
         <div className={`absolute top-0 right-0 w-24 h-24 rounded-full blur-2xl -mr-10 -mt-10 ${isDarkMode ? 'bg-lime-500/10' : 'bg-lime-500/20'}`}></div>
-        <p className={`text-xs font-mono tracking-widest uppercase mb-2 ${isDarkMode ? 'text-lime-400/80' : 'text-lime-700'}`}>Current Net Worth</p>
+        <p className={`text-xs font-mono tracking-widest uppercase mb-2 ${isDarkMode ? 'text-lime-400/80' : 'text-lime-700'}`}>Total Net Worth</p>
         <h1 className={`text-4xl font-bold mb-6 ${isDarkMode ? 'text-white drop-shadow-[0_0_5px_rgba(255,255,255,0.5)]' : 'text-gray-900'}`}>₹ {totalBalance.toLocaleString('en-IN')}</h1>
         <div className={`pt-4 border-t ${isDarkMode ? 'border-neutral-800' : 'border-gray-200'}`}>
           <div className="flex justify-between items-center text-sm">
-            <span className={isDarkMode ? 'text-neutral-400' : 'text-gray-500'}>This Month's Income</span>
+            <span className={isDarkMode ? 'text-neutral-400' : 'text-gray-500'}>Income (This Month)</span>
             <span className="text-lime-500 font-semibold">+₹{currentMonthIncome.toLocaleString()}</span>
           </div>
         </div>
       </div>
 
-      {/* Safe to Spend Card */}
+      {/* Safe-to-Spend Card (Algorithm Updated) */}
       <Card>
         <div className="flex justify-between items-start mb-4">
           <div>
@@ -113,9 +121,7 @@ const Dashboard = ({ transactions, totalBalance, obligations, monthlySavingsTarg
               Safe-to-Spend
               <AlertCircle size={16} className={isDarkMode ? 'text-neutral-500' : 'text-gray-400'} />
             </h2>
-            <p className={`text-xs ${isDarkMode ? 'text-neutral-500' : 'text-gray-500'}`}>
-              Income - (Bills + Savings Target)
-            </p>
+            <p className="text-[10px] opacity-60">Income - (Bills + Savings Goal)</p>
           </div>
           <div className={`text-right ${remainingSafeBudget < 0 ? 'text-red-500' : 'text-lime-500'}`}>
             <p className="text-2xl font-bold">₹ {remainingSafeBudget.toLocaleString('en-IN')}</p>
@@ -123,27 +129,27 @@ const Dashboard = ({ transactions, totalBalance, obligations, monthlySavingsTarg
           </div>
         </div>
 
-        {/* Progress Bar */}
+        {/* Budget Progress Bar */}
         <div className={`h-3 w-full rounded-full mb-2 ${isDarkMode ? 'bg-neutral-800' : 'bg-gray-100'} overflow-hidden`}>
           <div
             className={`h-full rounded-full transition-all duration-500 ${remainingSafeBudget < 0 ? 'bg-red-500' : 'bg-lime-500'}`}
-            style={{ width: `${budgetProgress}%` }}
+            style={{ width: `${Math.min(100, budgetProgress)}%` }}
           ></div>
         </div>
 
         <div className="grid grid-cols-2 gap-2 mt-4 text-xs">
           <div className={`p-2 rounded-lg ${isDarkMode ? 'bg-neutral-800' : 'bg-gray-50'}`}>
-            <span className="block opacity-60 mb-1">Total Limit</span>
+            <span className="block opacity-60 mb-1">Safe Limit</span>
             <span className="font-mono font-semibold">₹{safeToSpendTotal.toLocaleString()}</span>
           </div>
           <div className={`p-2 rounded-lg ${isDarkMode ? 'bg-neutral-800' : 'bg-gray-50'}`}>
-            <span className="block opacity-60 mb-1">Fixed Commitments</span>
-            <span className="font-mono font-semibold text-red-400">-₹{committedMoney.toLocaleString()}</span>
+            <span className="block opacity-60 mb-1">Commitments</span>
+            <span className="font-mono font-semibold text-red-400">-₹{totalCommitments.toLocaleString()}</span>
           </div>
         </div>
       </Card>
 
-      {/* Recent Transactions List */}
+      {/* Recent Activity */}
       <div>
         <div className="flex justify-between items-center mb-4">
           <h3 className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Recent Activity</h3>
@@ -183,19 +189,20 @@ const AddTransaction = ({ onAdd, onClose, categories }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    // INPUT GUARDRAILS (Validation)
-    if (!amount || parseFloat(amount) <= 0) {
+    // VALIDATION: No negatives, no empty text
+    const val = parseFloat(amount);
+    if (!amount || isNaN(val) || val <= 0) {
       alert("Please enter a valid amount greater than 0.");
       return;
     }
     if (!text.trim()) {
-      alert("Please enter a description for this transaction.");
+      alert("Please enter a description.");
       return;
     }
 
     onAdd({
       id: Date.now(),
-      amount: parseFloat(amount),
+      amount: val,
       text,
       type,
       category,
@@ -294,7 +301,6 @@ const Settings = ({ userProfile, setUserProfile, obligations, setObligations, lo
             <label className={`block text-xs font-medium mb-2 ${isDarkMode ? 'text-neutral-400' : 'text-gray-500'}`}>Email</label>
             <input type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} className={`w-full p-3 rounded-xl border outline-none ${isDarkMode ? 'bg-neutral-800 border-neutral-700 text-white' : 'bg-gray-50 border-gray-200'}`} />
           </div>
-
           <div className="pt-4 border-t border-dashed border-gray-700">
             <h3 className={`font-semibold mb-4 ${isDarkMode ? 'text-lime-400' : 'text-lime-600'}`}>Financial Goals</h3>
             <label className={`block text-xs font-medium mb-2 ${isDarkMode ? 'text-neutral-400' : 'text-gray-500'}`}>Minimum Monthly Savings Target</label>
@@ -308,14 +314,14 @@ const Settings = ({ userProfile, setUserProfile, obligations, setObligations, lo
                 className={`w-full p-3 pl-8 rounded-xl border outline-none ${isDarkMode ? 'bg-neutral-800 border-neutral-700 text-white' : 'bg-gray-50 border-gray-200'}`}
               />
             </div>
-            <p className="text-[10px] mt-2 opacity-60">This amount will be deducted from your "Safe-to-Spend" calculation.</p>
+            <p className="text-[10px] mt-2 opacity-60">This amount will be deducted from your "Safe-to-Spend" limit.</p>
           </div>
-
           <button onClick={saveProfile} className="w-full py-4 bg-lime-500 hover:bg-lime-400 text-black font-bold rounded-xl mt-4">Save Changes</button>
         </Card>
       </div>
     );
   }
+
   return (
     <div className="space-y-6 pb-24 animate-fade-in">
       {/* Profile Card */}
@@ -349,7 +355,7 @@ const Settings = ({ userProfile, setUserProfile, obligations, setObligations, lo
           {obligations.map(item => (
             <div key={item.id} className={`p-4 border-b last:border-0 flex items-center gap-3 ${isDarkMode ? 'border-neutral-800' : 'border-gray-100'}`}>
               <div className={`p-2 rounded-lg ${isDarkMode ? 'bg-neutral-800' : 'bg-gray-100'}`}>
-                <Lock size={18} className={item.isRecurring ? 'text-lime-500' : 'text-gray-400'} />
+                {item.isRecurring ? <Lock size={18} className="text-lime-500" /> : <Unlock size={18} className="text-gray-400" />}
               </div>
 
               {isEditingObligations ? (
@@ -362,6 +368,7 @@ const Settings = ({ userProfile, setUserProfile, obligations, setObligations, lo
                   />
                   <input
                     type="number"
+                    // FIX: Empty string if 0 so user doesn't have to delete the 0
                     value={item.amount === 0 ? '' : item.amount}
                     placeholder="0"
                     onChange={(e) => updateObligation(item.id, 'amount', parseFloat(e.target.value) || 0)}
@@ -370,7 +377,7 @@ const Settings = ({ userProfile, setUserProfile, obligations, setObligations, lo
                 </div>
               ) : (
                 <div className="flex-1 flex justify-between items-center">
-                  <p className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'} ${!item.isRecurring && 'opacity-50 line-through'}`}>{item.label}</p>
+                  <p className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'} ${!item.isRecurring && 'opacity-50'}`}>{item.label}</p>
                   <p className={`font-mono ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>₹{item.amount}</p>
                 </div>
               )}
@@ -387,7 +394,7 @@ const Settings = ({ userProfile, setUserProfile, obligations, setObligations, lo
           ))}
         </div>
         <p className="text-[10px] text-center opacity-40 px-4">
-          Items marked with <span className="text-lime-500">Green</span> are "Recurring" and will be auto-deducted from your Safe-to-Spend limit.
+          Items with <span className="text-lime-500">Green Lock</span> are Recurring and auto-deducted from your Safe-to-Spend limit.
         </p>
       </div>
 
@@ -418,7 +425,7 @@ const Settings = ({ userProfile, setUserProfile, obligations, setObligations, lo
 // --- Main App Component ---
 
 const App = () => {
-  // 1. Persistent Theme State
+  // 1. Theme Persistence
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.THEME);
     return saved ? JSON.parse(saved) : true;
@@ -432,27 +439,27 @@ const App = () => {
 
   const toggleTheme = () => setIsDarkMode(!isDarkMode);
 
-  // 2. Auth & User State
+  // 2. Auth State
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [transactions, setTransactions] = useState([]);
+  const [obligations, setObligations] = useState(INITIAL_OBLIGATIONS);
 
-  // 3. Persistent Tab State (Fixes the "Refresh Redirect" issue)
+  // 3. Tab Persistence (Preserve Tab on Refresh)
   const [activeTab, setActiveTab] = useState(() => {
     return localStorage.getItem(STORAGE_KEYS.SESSION + '_tab') || 'home';
   });
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.SESSION + '_tab', activeTab);
-  }, [activeTab]);
+    if (currentUser) {
+      localStorage.setItem(STORAGE_KEYS.SESSION + '_tab', activeTab);
+    }
+  }, [activeTab, currentUser]);
 
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [transactions, setTransactions] = useState([]);
-  const [obligations, setObligations] = useState(INITIAL_OBLIGATIONS);
-
-  // Load Data on Login
+  // Load Data
   const loadUserData = (user) => {
     const suffix = `_${user.id}`;
-
     const savedTx = JSON.parse(localStorage.getItem(STORAGE_KEYS.TRANSACTIONS + suffix)) || INITIAL_TRANSACTIONS;
     const savedOb = JSON.parse(localStorage.getItem(STORAGE_KEYS.OBLIGATIONS + suffix)) || INITIAL_OBLIGATIONS;
     const savedProfile = JSON.parse(localStorage.getItem(STORAGE_KEYS.PROFILE + suffix)) || {
@@ -466,19 +473,30 @@ const App = () => {
     setUserProfile(savedProfile);
   };
 
-  // Login Handler
+  // 4. Session Persistence (CRITICAL FIX: Check login on mount)
+  useEffect(() => {
+    const savedSession = localStorage.getItem(STORAGE_KEYS.SESSION);
+    if (savedSession) {
+      const user = JSON.parse(savedSession);
+      setCurrentUser(user);
+      loadUserData(user);
+    }
+  }, []);
+
   const handleLogin = (user) => {
     setCurrentUser(user);
     loadUserData(user);
+    localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(user));
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
-    setActiveTab('home');
+    localStorage.removeItem(STORAGE_KEYS.SESSION);
     localStorage.removeItem(STORAGE_KEYS.SESSION + '_tab');
+    setActiveTab('home');
   };
 
-  // Data Persistence Effects
+  // Save Data on Change
   useEffect(() => {
     if (currentUser) {
       const suffix = `_${currentUser.id}`;
@@ -549,14 +567,14 @@ const App = () => {
             <button onClick={() => setActiveTab('home')} className={`p-4 rounded-2xl transition-all ${activeTab === 'home' ? (isDarkMode ? 'text-lime-400 bg-neutral-900' : 'text-lime-600 bg-lime-50') : 'opacity-50 hover:opacity-100'}`}>
               <Home size={24} strokeWidth={activeTab === 'home' ? 2.5 : 2} />
             </button>
-            <div className="w-12"></div> {/* Spacer for FAB */}
+            <div className="w-12"></div>
             <button onClick={() => setActiveTab('settings')} className={`p-4 rounded-2xl transition-all ${activeTab === 'settings' ? (isDarkMode ? 'text-lime-400 bg-neutral-900' : 'text-lime-600 bg-lime-50') : 'opacity-50 hover:opacity-100'}`}>
               <SettingsIcon size={24} strokeWidth={activeTab === 'settings' ? 2.5 : 2} />
             </button>
           </div>
         </nav>
 
-        {/* Modals */}
+        {/* Modal */}
         {showAddModal && (
           <AddTransaction
             onAdd={addTransaction}
