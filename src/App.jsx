@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useContext } from 'react';
 import {
   Plus, PieChart, LayoutDashboard, Home, TrendingUp, AlertCircle,
   Settings as SettingsIcon, Sun, Moon,
-  Check, Pencil, Receipt, LogOut, Download, Upload, X, ChevronLeft, Lock, Unlock, FileText, Trash2, Lightbulb, Wallet
+  Check, Pencil, Receipt, LogOut, Download, Upload, X, ChevronLeft, Lock, Unlock, FileText, Trash2, Lightbulb, Wallet, MessageSquareText, ArrowRight
 } from 'lucide-react';
 import Login from './Login';
 
@@ -53,8 +53,9 @@ const FinTrackLogo = () => {
 };
 
 // --- TAB 1: HOME (Net Worth, Safe-to-Spend, Logs) ---
-const HomeTab = ({ transactions, totalBalance, obligations, monthlySavingsTarget }) => {
+const HomeTab = ({ transactions, totalBalance, obligations, monthlySavingsTarget, onSmartAdd }) => {
   const { isDarkMode } = useTheme();
+  const [smsInput, setSmsInput] = useState('');
 
   // Safe-to-Spend Logic
   const today = new Date();
@@ -79,6 +80,33 @@ const HomeTab = ({ transactions, totalBalance, obligations, monthlySavingsTarget
   let budgetProgress = 0;
   if (safeToSpendTotal > 0) budgetProgress = (currentMonthExpense / safeToSpendTotal) * 100;
   else if (currentMonthExpense > 0) budgetProgress = 100;
+
+  // SMS Parsing Logic
+  const handleParse = () => {
+    if (!smsInput.trim()) return;
+
+    // 1. Amount Regex (Look for Rs, INR, ₹ followed by digits)
+    const amountRegex = /(?:rs\.?|inr|₹)\s*([\d,]+(?:\.\d{1,2})?)/i;
+    const amountMatch = smsInput.match(amountRegex);
+    let amount = '';
+    if (amountMatch) {
+      amount = parseFloat(amountMatch[1].replace(/,/g, ''));
+    }
+
+    // 2. Type Detection
+    let type = 'expense';
+    if (/(credited|received|deposited|added)/i.test(smsInput)) {
+      type = 'income';
+    }
+
+    // 3. Merchant/Description (Look for 'at', 'to', 'from')
+    const merchantRegex = /(?:at|to|from)\s+([a-zA-Z0-9\s\.]+?)(?:\s+(?:on|using|via|through|ref)|$)/i;
+    const merchantMatch = smsInput.match(merchantRegex);
+    let text = merchantMatch ? merchantMatch[1].trim() : 'SMS Transaction';
+
+    onSmartAdd({ amount, text, type });
+    setSmsInput('');
+  };
 
   return (
     <div className="space-y-6 pb-24 animate-fade-in">
@@ -125,6 +153,35 @@ const HomeTab = ({ transactions, totalBalance, obligations, monthlySavingsTarget
             <span className="block opacity-60 mb-1">Commitments</span>
             <span className="font-mono font-semibold text-red-400">-₹{totalCommitments.toLocaleString()}</span>
           </div>
+        </div>
+      </Card>
+
+      {/* NEW: Smart SMS Parsing */}
+      <Card className="flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <div className={`p-2 rounded-lg ${isDarkMode ? 'bg-neutral-800' : 'bg-blue-50'}`}>
+            <MessageSquareText size={20} className="text-blue-500" />
+          </div>
+          <div>
+            <h3 className={`font-semibold text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Smart Add</h3>
+            <p className="text-[10px] opacity-60">Paste bank SMS to auto-fill details</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            placeholder="Paste transaction SMS here..."
+            value={smsInput}
+            onChange={(e) => setSmsInput(e.target.value)}
+            className={`flex-1 p-3 rounded-xl text-sm outline-none border ${isDarkMode ? 'bg-neutral-950 border-neutral-800 text-white placeholder-neutral-600' : 'bg-gray-50 border-gray-200 text-gray-900'}`}
+          />
+          <button
+            onClick={handleParse}
+            disabled={!smsInput.trim()}
+            className="bg-blue-500 hover:bg-blue-600 text-white p-3 rounded-xl transition-colors disabled:opacity-50"
+          >
+            <ArrowRight size={20} />
+          </button>
         </div>
       </Card>
 
@@ -415,12 +472,21 @@ const SettingsTab = ({ userProfile, setUserProfile, logout, currentUser }) => {
   );
 };
 
-const AddTransaction = ({ onAdd, onClose, categories }) => {
+const AddTransaction = ({ onAdd, onClose, categories, initialData }) => {
   const { isDarkMode } = useTheme();
   const [amount, setAmount] = useState('');
   const [text, setText] = useState('');
   const [type, setType] = useState('expense');
   const [category, setCategory] = useState(categories[0]);
+
+  // Pre-fill from SMS parsing or other sources
+  useEffect(() => {
+    if (initialData) {
+      if (initialData.amount) setAmount(initialData.amount);
+      if (initialData.text) setText(initialData.text);
+      if (initialData.type) setType(initialData.type);
+    }
+  }, [initialData]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -461,6 +527,7 @@ const App = () => {
   const [transactions, setTransactions] = useState([]);
   const [obligations, setObligations] = useState(INITIAL_OBLIGATIONS);
   const [activeTab, setActiveTab] = useState(() => localStorage.getItem(STORAGE_KEYS.SESSION + '_tab') || 'home');
+  const [draftTx, setDraftTx] = useState(null); // State for smart SMS add
 
   useEffect(() => { if (currentUser) localStorage.setItem(STORAGE_KEYS.SESSION + '_tab', activeTab); }, [activeTab, currentUser]);
 
@@ -490,6 +557,12 @@ const App = () => {
 
   const totalBalance = useMemo(() => transactions.reduce((acc, t) => t.type === 'income' ? acc + t.amount : acc - t.amount, 0), [transactions]);
 
+  // Handler for Smart SMS Add
+  const handleSmartAdd = (data) => {
+    setDraftTx(data);
+    setShowAddModal(true);
+  };
+
   if (!currentUser) {
     return (
       <ThemeContext.Provider value={{ isDarkMode, toggleTheme }}>
@@ -507,13 +580,13 @@ const App = () => {
         </header>
 
         <main className="pt-24 px-4 max-w-lg mx-auto min-h-screen">
-          {activeTab === 'home' && <HomeTab transactions={transactions} totalBalance={totalBalance} obligations={obligations} monthlySavingsTarget={userProfile?.monthlySavingsTarget} />}
+          {activeTab === 'home' && <HomeTab transactions={transactions} totalBalance={totalBalance} obligations={obligations} monthlySavingsTarget={userProfile?.monthlySavingsTarget} onSmartAdd={handleSmartAdd} />}
           {activeTab === 'analysis' && <AnalysisTab transactions={transactions} />}
           {activeTab === 'dashboard' && <DashboardTab obligations={obligations} setObligations={setObligations} />}
           {activeTab === 'settings' && <SettingsTab userProfile={userProfile} setUserProfile={setUserProfile} logout={handleLogout} currentUser={currentUser} />}
         </main>
 
-        <button onClick={() => setShowAddModal(true)} className="fixed right-6 bottom-24 z-40 bg-lime-500 hover:bg-lime-400 text-black p-4 rounded-full shadow-[0_0_20px_rgba(132,204,22,0.4)] transition-transform hover:scale-105 active:scale-95"><Plus size={28} strokeWidth={2.5} /></button>
+        <button onClick={() => { setDraftTx(null); setShowAddModal(true); }} className="fixed right-6 bottom-24 z-40 bg-lime-500 hover:bg-lime-400 text-black p-4 rounded-full shadow-[0_0_20px_rgba(132,204,22,0.4)] transition-transform hover:scale-105 active:scale-95"><Plus size={28} strokeWidth={2.5} /></button>
 
         <nav className={`fixed bottom-0 w-full pb-safe z-40 border-t ${isDarkMode ? 'bg-neutral-950 border-neutral-900' : 'bg-white border-gray-200'}`}>
           <div className="flex justify-between items-center p-2 max-w-lg mx-auto px-6">
@@ -524,7 +597,7 @@ const App = () => {
           </div>
         </nav>
 
-        {showAddModal && <AddTransaction onAdd={(tx) => setTransactions(prev => [...prev, tx])} onClose={() => setShowAddModal(false)} categories={CATEGORIES} />}
+        {showAddModal && <AddTransaction onAdd={(tx) => setTransactions(prev => [...prev, tx])} onClose={() => setShowAddModal(false)} categories={CATEGORIES} initialData={draftTx} />}
       </div>
     </ThemeContext.Provider>
   );
