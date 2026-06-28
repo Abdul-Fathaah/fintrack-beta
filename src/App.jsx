@@ -100,7 +100,7 @@ const HomeTab = ({ transactions, totalBalance, obligations, monthlySavingsTarget
     }
 
     // 3. Merchant/Description (Look for 'at', 'to', 'from')
-    const merchantRegex = /(?:at|to|from)\s+([a-zA-Z0-9\s\.]+?)(?:\s+(?:on|using|via|through|ref)|$)/i;
+    const merchantRegex = /(?:at|to|from)\s+([a-zA-Z0-9\s.]+?)(?:\s+(?:on|using|via|through|ref)|$)/i;
     const merchantMatch = smsInput.match(merchantRegex);
     let text = merchantMatch ? merchantMatch[1].trim() : 'SMS Transaction';
 
@@ -432,7 +432,10 @@ const SettingsTab = ({ userProfile, setUserProfile, logout, currentUser }) => {
         if (data.obligations) localStorage.setItem(STORAGE_KEYS.OBLIGATIONS + suffix, JSON.stringify(data.obligations));
         alert("Import successful! Reloading...");
         window.location.reload();
-      } catch (error) { alert("Invalid backup file."); }
+      } catch (error) {
+        console.error(error);
+        alert("Invalid backup file.");
+      }
     };
     reader.readAsText(file);
   };
@@ -474,19 +477,10 @@ const SettingsTab = ({ userProfile, setUserProfile, logout, currentUser }) => {
 
 const AddTransaction = ({ onAdd, onClose, categories, initialData }) => {
   const { isDarkMode } = useTheme();
-  const [amount, setAmount] = useState('');
-  const [text, setText] = useState('');
-  const [type, setType] = useState('expense');
-  const [category, setCategory] = useState(categories[0]);
-
-  // Pre-fill from SMS parsing or other sources
-  useEffect(() => {
-    if (initialData) {
-      if (initialData.amount) setAmount(initialData.amount);
-      if (initialData.text) setText(initialData.text);
-      if (initialData.type) setType(initialData.type);
-    }
-  }, [initialData]);
+  const [amount, setAmount] = useState(initialData?.amount || '');
+  const [text, setText] = useState(initialData?.text || '');
+  const [type, setType] = useState(initialData?.type || 'expense');
+  const category = initialData?.category || categories[0];
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -521,11 +515,38 @@ const App = () => {
   useEffect(() => { localStorage.setItem(STORAGE_KEYS.THEME, JSON.stringify(isDarkMode)); if (isDarkMode) document.documentElement.classList.add('dark'); else document.documentElement.classList.remove('dark'); }, [isDarkMode]);
   const toggleTheme = () => setIsDarkMode(!isDarkMode);
 
-  const [currentUser, setCurrentUser] = useState(null);
-  const [userProfile, setUserProfile] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => {
+    const savedSession = localStorage.getItem(STORAGE_KEYS.SESSION);
+    return savedSession ? JSON.parse(savedSession) : null;
+  });
+  const [userProfile, setUserProfile] = useState(() => {
+    const savedSession = localStorage.getItem(STORAGE_KEYS.SESSION);
+    if (savedSession) {
+      const user = JSON.parse(savedSession);
+      const suffix = `_${user.id}`;
+      return JSON.parse(localStorage.getItem(STORAGE_KEYS.PROFILE + suffix)) || { name: user.name || 'User', email: user.email, monthlySavingsTarget: 0 };
+    }
+    return null;
+  });
   const [showAddModal, setShowAddModal] = useState(false);
-  const [transactions, setTransactions] = useState([]);
-  const [obligations, setObligations] = useState(INITIAL_OBLIGATIONS);
+  const [transactions, setTransactions] = useState(() => {
+    const savedSession = localStorage.getItem(STORAGE_KEYS.SESSION);
+    if (savedSession) {
+      const user = JSON.parse(savedSession);
+      const suffix = `_${user.id}`;
+      return JSON.parse(localStorage.getItem(STORAGE_KEYS.TRANSACTIONS + suffix)) || INITIAL_TRANSACTIONS;
+    }
+    return INITIAL_TRANSACTIONS;
+  });
+  const [obligations, setObligations] = useState(() => {
+    const savedSession = localStorage.getItem(STORAGE_KEYS.SESSION);
+    if (savedSession) {
+      const user = JSON.parse(savedSession);
+      const suffix = `_${user.id}`;
+      return JSON.parse(localStorage.getItem(STORAGE_KEYS.OBLIGATIONS + suffix)) || INITIAL_OBLIGATIONS;
+    }
+    return INITIAL_OBLIGATIONS;
+  });
   const [activeTab, setActiveTab] = useState(() => localStorage.getItem(STORAGE_KEYS.SESSION + '_tab') || 'home');
   const [draftTx, setDraftTx] = useState(null); // State for smart SMS add
 
@@ -537,11 +558,6 @@ const App = () => {
     setObligations(JSON.parse(localStorage.getItem(STORAGE_KEYS.OBLIGATIONS + suffix)) || INITIAL_OBLIGATIONS);
     setUserProfile(JSON.parse(localStorage.getItem(STORAGE_KEYS.PROFILE + suffix)) || { name: user.name || 'User', email: user.email, monthlySavingsTarget: 0 });
   };
-
-  useEffect(() => {
-    const savedSession = localStorage.getItem(STORAGE_KEYS.SESSION);
-    if (savedSession) { const user = JSON.parse(savedSession); setCurrentUser(user); loadUserData(user); }
-  }, []);
 
   const handleLogin = (user) => { setCurrentUser(user); loadUserData(user); localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(user)); };
   const handleLogout = () => { setCurrentUser(null); localStorage.removeItem(STORAGE_KEYS.SESSION); localStorage.removeItem(STORAGE_KEYS.SESSION + '_tab'); setActiveTab('home'); };
