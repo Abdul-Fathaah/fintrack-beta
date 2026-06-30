@@ -46,7 +46,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       return;
     }
     onAdd({
-      id: Date.now(),
+      id: crypto.randomUUID(),
       amount: val,
       text,
       type,

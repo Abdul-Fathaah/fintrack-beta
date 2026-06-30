@@ -31,7 +31,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ obligations, setObli
   };
 
   const addObligation = () => {
-    const newItem: Obligation = { id: Date.now(), label: 'New Bill', amount: 0, isRecurring: true };
+    const newItem: Obligation = { id: crypto.randomUUID(), label: 'New Bill', amount: 0, isRecurring: true };
     setObligations((prev) => [...prev, newItem]);
   };
 

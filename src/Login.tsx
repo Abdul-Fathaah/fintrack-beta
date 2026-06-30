@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { User as UserIcon, Lock, Mail, ArrowRight, ShieldCheck } from 'lucide-react';
 import { User } from './types';
+import { supabase } from './utils/supabaseClient';
 
 interface LoginProps {
   onLogin: (user: User) => void;
@@ -11,6 +12,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, theme }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [formData, setFormData] = useState({ name: '', email: '', password: '' });
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const t =
     theme === 'dark'
@@ -20,7 +22,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, theme }) => {
           text: 'text-white',
           input: 'bg-neutral-950 border-neutral-700 text-white',
           accent: 'text-lime-400',
-          btn: 'bg-lime-505 text-black hover:bg-lime-400',
+          btn: 'bg-lime-500 text-black hover:bg-lime-400',
         }
       : {
           bg: 'bg-gray-50',
@@ -31,35 +33,84 @@ export const Login: React.FC<LoginProps> = ({ onLogin, theme }) => {
           btn: 'bg-lime-600 text-white hover:bg-lime-700',
         };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setLoading(true);
 
-    const users: User[] = JSON.parse(localStorage.getItem('ft_client_users_db') || '[]');
+    try {
+      if (isLogin) {
+        const { data, error: authError } = await supabase.auth.signInWithPassword({
+          email: formData.email,
+          password: formData.password,
+        });
 
-    if (isLogin) {
-      const user = users.find(
-        (u) => u.email === formData.email && u.password === formData.password
-      );
-      if (user) {
-        onLogin(user);
+        if (authError) {
+          setError(authError.message);
+          setLoading(false);
+          return;
+        }
+
+        if (data?.user) {
+          // Fetch the profile for this user
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', data.user.id)
+            .single();
+
+          onLogin({
+            id: data.user.id,
+            name: profileData?.name || data.user.user_metadata?.name || 'User',
+            email: data.user.email || formData.email,
+            joined: new Date(data.user.created_at).toLocaleDateString(),
+          });
+        }
       } else {
-        setError('Invalid email or password.');
+        // Sign Up
+        const { data, error: authError } = await supabase.auth.signUp({
+          email: formData.email,
+          password: formData.password,
+          options: {
+            data: {
+              name: formData.name,
+            },
+          },
+        });
+
+        if (authError) {
+          setError(authError.message);
+          setLoading(false);
+          return;
+        }
+
+        if (data?.user) {
+          // Create user profile in profiles table
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .insert({
+              id: data.user.id,
+              name: formData.name,
+              email: formData.email,
+              monthly_savings_target: 0,
+            });
+
+          if (profileError) {
+            console.error('Error creating profile:', profileError);
+          }
+
+          onLogin({
+            id: data.user.id,
+            name: formData.name,
+            email: formData.email,
+            joined: new Date(data.user.created_at).toLocaleDateString(),
+          });
+        }
       }
-    } else {
-      if (users.find((u) => u.email === formData.email)) {
-        setError('User already exists.');
-        return;
-      }
-      const newUser: User = {
-        id: Date.now(),
-        name: formData.name,
-        email: formData.email,
-        password: formData.password,
-        joined: new Date().toLocaleDateString(),
-      };
-      localStorage.setItem('ft_client_users_db', JSON.stringify([...users, newUser]));
-      onLogin(newUser);
+    } catch (err: any) {
+      setError(err?.message || 'An unexpected error occurred.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -103,6 +154,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, theme }) => {
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
+                disabled={loading}
               />
             </div>
           )}
@@ -120,6 +172,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, theme }) => {
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               required
+              disabled={loading}
             />
           </div>
 
@@ -136,6 +189,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, theme }) => {
               value={formData.password}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               required
+              disabled={loading}
             />
           </div>
 
@@ -147,9 +201,13 @@ export const Login: React.FC<LoginProps> = ({ onLogin, theme }) => {
 
           <button
             type="submit"
-            className={`w-full py-4 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-transform active:scale-95 ${t.btn}`}
+            disabled={loading}
+            className={`w-full py-4 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-transform active:scale-95 ${t.btn} ${
+              loading ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
           >
-            {isLogin ? 'Sign In' : 'Sign Up'} <ArrowRight size={20} />
+            {loading ? 'Processing...' : isLogin ? 'Sign In' : 'Sign Up'}{' '}
+            {!loading && <ArrowRight size={20} />}
           </button>
         </form>
 
@@ -163,6 +221,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, theme }) => {
                 setError('');
               }}
               className={`ml-2 font-bold hover:underline ${t.accent}`}
+              disabled={loading}
             >
               {isLogin ? 'Sign Up' : 'Sign In'}
             </button>

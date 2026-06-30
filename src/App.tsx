@@ -12,6 +12,7 @@ import { FinTrackLogo } from './components/FinTrackLogo';
 import { AddTransactionModal } from './components/AddTransactionModal';
 import { ThemeContext } from './hooks/useTheme';
 import { Transaction, Obligation, User, UserProfile } from './types';
+import { supabase } from './utils/supabaseClient';
 
 export const STORAGE_KEYS = {
   TRANSACTIONS: 'ft_client_transactions_v1',
@@ -50,72 +51,326 @@ export const AppContent: React.FC = () => {
 
   const toggleTheme = () => setIsDarkMode(!isDarkMode);
 
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    const savedSession = localStorage.getItem(STORAGE_KEYS.SESSION);
-    return savedSession ? JSON.parse(savedSession) : null;
-  });
-
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(() => {
-    const savedSession = localStorage.getItem(STORAGE_KEYS.SESSION);
-    if (savedSession) {
-      const user = JSON.parse(savedSession);
-      const suffix = `_${user.id}`;
-      return JSON.parse(localStorage.getItem(STORAGE_KEYS.PROFILE + suffix) || 'null') || { name: user.name || 'User', email: user.email, monthlySavingsTarget: 0 };
-    }
-    return null;
-  });
-
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
+  const [obligations, setObligations] = useState<Obligation[]>(INITIAL_OBLIGATIONS);
+  const [loading, setLoading] = useState<boolean>(true);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [transactions, setTransactions] = useState<Transaction[]>(() => {
-    const savedSession = localStorage.getItem(STORAGE_KEYS.SESSION);
-    if (savedSession) {
-      const user = JSON.parse(savedSession);
-      const suffix = `_${user.id}`;
-      return JSON.parse(localStorage.getItem(STORAGE_KEYS.TRANSACTIONS + suffix) || 'null') || INITIAL_TRANSACTIONS;
-    }
-    return INITIAL_TRANSACTIONS;
-  });
-
-  const [obligations, setObligations] = useState<Obligation[]>(() => {
-    const savedSession = localStorage.getItem(STORAGE_KEYS.SESSION);
-    if (savedSession) {
-      const user = JSON.parse(savedSession);
-      const suffix = `_${user.id}`;
-      return JSON.parse(localStorage.getItem(STORAGE_KEYS.OBLIGATIONS + suffix) || 'null') || INITIAL_OBLIGATIONS;
-    }
-    return INITIAL_OBLIGATIONS;
-  });
-
   const [draftTx, setDraftTx] = useState<{ amount: number | ''; text: string; type: 'income' | 'expense' | 'investment' } | null>(null);
 
-  const loadUserData = (user: User) => {
-    const suffix = `_${user.id}`;
-    setTransactions(JSON.parse(localStorage.getItem(STORAGE_KEYS.TRANSACTIONS + suffix) || 'null') || INITIAL_TRANSACTIONS);
-    setObligations(JSON.parse(localStorage.getItem(STORAGE_KEYS.OBLIGATIONS + suffix) || 'null') || INITIAL_OBLIGATIONS);
-    setUserProfile(JSON.parse(localStorage.getItem(STORAGE_KEYS.PROFILE + suffix) || 'null') || { name: user.name || 'User', email: user.email, monthlySavingsTarget: 0 });
+  // Sync profile changes to Supabase
+  useEffect(() => {
+    if (!currentUser || !userProfile) return;
+
+    const saveProfileData = async () => {
+      await supabase.from('profiles').upsert({
+        id: currentUser.id,
+        name: userProfile.name,
+        email: userProfile.email || currentUser.email,
+        monthly_savings_target: userProfile.monthlySavingsTarget,
+      });
+    };
+    saveProfileData();
+  }, [userProfile, currentUser]);
+
+  // Debounced sync for obligations changes
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const handler = setTimeout(async () => {
+      try {
+        // Fetch current obligations from DB to check for deletions
+        const { data: dbObligations } = await supabase
+          .from('obligations')
+          .select('id')
+          .eq('user_id', currentUser.id);
+
+        if (dbObligations) {
+          const currentIds = obligations.map((o) => o.id);
+          const idsToDelete = dbObligations.filter((o) => !currentIds.includes(o.id)).map((o) => o.id);
+          if (idsToDelete.length > 0) {
+            await supabase.from('obligations').delete().in('id', idsToDelete);
+          }
+        }
+
+        // Upsert current obligations
+        if (obligations.length > 0) {
+          await supabase.from('obligations').upsert(
+            obligations.map((o) => ({
+              id: o.id,
+              user_id: currentUser.id,
+              label: o.label,
+              amount: o.amount,
+              is_recurring: o.isRecurring,
+            }))
+          );
+        }
+      } catch (err) {
+        console.error('Error syncing obligations to Supabase:', err);
+      }
+    }, 800);
+
+    return () => clearTimeout(handler);
+  }, [obligations, currentUser]);
+
+  const loadUserData = async (authInst: any) => {
+    setLoading(true);
+    const userObj: User = {
+      id: authInst.id,
+      name: authInst.user_metadata?.name || 'User',
+      email: authInst.email || '',
+      joined: new Date(authInst.created_at).toLocaleDateString(),
+    };
+    setCurrentUser(userObj);
+
+    try {
+      // 1. Load Profile
+      let profile: UserProfile = { name: userObj.name, email: userObj.email, monthlySavingsTarget: 0 };
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', authInst.id)
+        .single();
+
+      if (profileData) {
+        profile = {
+          name: profileData.name,
+          email: profileData.email,
+          monthlySavingsTarget: Number(profileData.monthly_savings_target) || 0,
+        };
+      } else {
+        await supabase.from('profiles').insert({
+          id: authInst.id,
+          name: userObj.name,
+          email: userObj.email,
+          monthly_savings_target: 0,
+        });
+      }
+      setUserProfile(profile);
+
+      // 2. Load Obligations
+      const { data: obligationsData } = await supabase
+        .from('obligations')
+        .select('*')
+        .eq('user_id', authInst.id);
+
+      let loadedObligations = INITIAL_OBLIGATIONS;
+      if (obligationsData && obligationsData.length > 0) {
+        loadedObligations = obligationsData.map((o) => ({
+          id: o.id,
+          label: o.label,
+          amount: Number(o.amount) || 0,
+          isRecurring: o.is_recurring,
+        }));
+      }
+      setObligations(loadedObligations);
+
+      // 3. Load Transactions
+      const { data: transactionsData } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('user_id', authInst.id)
+        .order('date', { ascending: true });
+
+      let loadedTransactions = INITIAL_TRANSACTIONS;
+      if (transactionsData && transactionsData.length > 0) {
+        loadedTransactions = transactionsData.map((t) => ({
+          id: t.id,
+          amount: Number(t.amount) || 0,
+          text: t.text,
+          type: t.type as 'income' | 'expense' | 'investment',
+          category: t.category,
+          date: t.date,
+        }));
+      }
+      setTransactions(loadedTransactions);
+
+      // 4. Run Legacy Migration Check
+      await runLegacyMigration(userObj.email, authInst.id, loadedTransactions, loadedObligations, profile);
+    } catch (err) {
+      console.error('Error loading user data from Supabase:', err);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const runLegacyMigration = async (
+    email: string,
+    newUserId: string,
+    currentTransactions: Transaction[],
+    currentObligations: Obligation[],
+    currentProfile: UserProfile
+  ) => {
+    try {
+      const usersDbRaw = localStorage.getItem('ft_client_users_db');
+      if (!usersDbRaw) return;
+
+      const users: any[] = JSON.parse(usersDbRaw);
+      const legacyUser = users.find((u) => u.email === email);
+      if (!legacyUser) return;
+
+      const legacyUserId = legacyUser.id;
+      const suffix = `_${legacyUserId}`;
+
+      const legacyTxRaw = localStorage.getItem(STORAGE_KEYS.TRANSACTIONS + suffix);
+      const legacyOblRaw = localStorage.getItem(STORAGE_KEYS.OBLIGATIONS + suffix);
+      const legacyProfileRaw = localStorage.getItem(STORAGE_KEYS.PROFILE + suffix);
+
+      let migratedCount = 0;
+
+      // Migrate profile savings target if local exists and cloud target is 0
+      if (legacyProfileRaw && currentProfile.monthlySavingsTarget === 0) {
+        const legacyProfile = JSON.parse(legacyProfileRaw);
+        if (legacyProfile.monthlySavingsTarget > 0) {
+          const updatedProfile = { ...currentProfile, monthlySavingsTarget: legacyProfile.monthlySavingsTarget };
+          setUserProfile(updatedProfile);
+          await supabase.from('profiles').upsert({
+            id: newUserId,
+            name: updatedProfile.name,
+            email: updatedProfile.email || email,
+            monthly_savings_target: updatedProfile.monthlySavingsTarget,
+          });
+          migratedCount++;
+        }
+      }
+
+      // Migrate transactions if local exists and cloud database is empty
+      if (legacyTxRaw && currentTransactions.length === 0) {
+        const legacyTx: any[] = JSON.parse(legacyTxRaw);
+        if (legacyTx.length > 0) {
+          const txsToInsert = legacyTx.map((t) => ({
+            id: crypto.randomUUID(),
+            user_id: newUserId,
+            amount: Number(t.amount) || 0,
+            text: t.text || 'Imported Transaction',
+            type: t.type,
+            category: t.category || 'Other',
+            date: t.date ? t.date.split('T')[0] : new Date().toISOString().split('T')[0],
+          }));
+
+          const { error } = await supabase.from('transactions').insert(txsToInsert);
+          if (!error) {
+            setTransactions(
+              txsToInsert.map((t) => ({
+                id: t.id,
+                amount: t.amount,
+                text: t.text,
+                type: t.type,
+                category: t.category,
+                date: t.date,
+              }))
+            );
+            migratedCount++;
+          }
+        }
+      }
+
+      // Migrate obligations if local exists and cloud database has default values
+      if (legacyOblRaw && currentObligations.length <= INITIAL_OBLIGATIONS.length) {
+        const legacyObl: any[] = JSON.parse(legacyOblRaw);
+        const hasLegacyValues = legacyObl.some((o) => o.amount > 0);
+        if (hasLegacyValues) {
+          const obsToUpsert = legacyObl.map((o) => ({
+            id: crypto.randomUUID(),
+            user_id: newUserId,
+            label: o.label,
+            amount: Number(o.amount) || 0,
+            is_recurring: o.isRecurring ?? true,
+          }));
+
+          const { error } = await supabase.from('obligations').upsert(obsToUpsert);
+          if (!error) {
+            setObligations(
+              obsToUpsert.map((o) => ({
+                id: o.id,
+                label: o.label,
+                amount: o.amount,
+                isRecurring: o.is_recurring,
+              }))
+            );
+            migratedCount++;
+          }
+        }
+      }
+
+      if (migratedCount > 0) {
+        console.log(`Legacy migration successful. Cleaned up legacy localStorage keys.`);
+        localStorage.removeItem(STORAGE_KEYS.TRANSACTIONS + suffix);
+        localStorage.removeItem(STORAGE_KEYS.OBLIGATIONS + suffix);
+        localStorage.removeItem(STORAGE_KEYS.PROFILE + suffix);
+
+        const updatedUsers = users.filter((u) => u.email !== email);
+        if (updatedUsers.length > 0) {
+          localStorage.setItem('ft_client_users_db', JSON.stringify(updatedUsers));
+        } else {
+          localStorage.removeItem('ft_client_users_db');
+        }
+      }
+    } catch (e) {
+      console.error('Failed to run legacy data migration:', e);
+    }
+  };
+
+  // Listen to Auth State Changes
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        loadUserData(session.user);
+      } else {
+        setLoading(false);
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session?.user) {
+        loadUserData(session.user);
+      } else {
+        setCurrentUser(null);
+        setUserProfile(null);
+        setTransactions(INITIAL_TRANSACTIONS);
+        setObligations(INITIAL_OBLIGATIONS);
+        setLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const handleLogin = (user: User) => {
     setCurrentUser(user);
-    loadUserData(user);
-    localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(user));
     navigate('/home');
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    setLoading(true);
+    await supabase.auth.signOut();
     setCurrentUser(null);
-    localStorage.removeItem(STORAGE_KEYS.SESSION);
+    setUserProfile(null);
+    setTransactions(INITIAL_TRANSACTIONS);
+    setObligations(INITIAL_OBLIGATIONS);
+    setLoading(false);
     navigate('/login');
   };
 
-  useEffect(() => {
+  const handleAddTransaction = async (tx: Transaction) => {
+    setTransactions((prev) => [...prev, tx]);
     if (currentUser) {
-      const suffix = `_${currentUser.id}`;
-      localStorage.setItem(STORAGE_KEYS.TRANSACTIONS + suffix, JSON.stringify(transactions));
-      localStorage.setItem(STORAGE_KEYS.OBLIGATIONS + suffix, JSON.stringify(obligations));
-      if (userProfile) localStorage.setItem(STORAGE_KEYS.PROFILE + suffix, JSON.stringify(userProfile));
+      try {
+        await supabase.from('transactions').insert({
+          id: tx.id,
+          user_id: currentUser.id,
+          amount: tx.amount,
+          text: tx.text,
+          type: tx.type,
+          category: tx.category,
+          date: tx.date.split('T')[0],
+        });
+      } catch (err) {
+        console.error('Error inserting transaction into Supabase:', err);
+      }
     }
-  }, [transactions, obligations, userProfile, currentUser]);
+  };
 
   const totalBalance = useMemo(() => transactions.reduce((acc, t) => t.type === 'income' ? acc + t.amount : acc - t.amount, 0), [transactions]);
 
@@ -124,7 +379,6 @@ export const AppContent: React.FC = () => {
     setShowAddModal(true);
   };
 
-  // Determine active tab/route
   const activeTab = useMemo(() => {
     const path = location.pathname;
     if (path.startsWith('/home') || path === '/') return 'home';
@@ -134,13 +388,24 @@ export const AppContent: React.FC = () => {
     return '';
   }, [location.pathname]);
 
+  if (loading) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center font-sans ${isDarkMode ? 'bg-neutral-950 text-white' : 'bg-gray-50 text-gray-900'}`}>
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-lime-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-sm font-medium opacity-70">Synchronizing with FinTrack Cloud...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!currentUser && location.pathname !== '/login') {
     return <Navigate to="/login" replace />;
   }
 
   return (
     <ThemeContext.Provider value={{ isDarkMode, toggleTheme }}>
-      <div className={`min-h-screen transition-colors duration-300 ${isDarkMode ? 'bg-neutral-950 text-white' : 'bg-gray-55 text-gray-900'} font-sans selection:bg-lime-500/30`}>
+      <div className={`min-h-screen transition-colors duration-300 ${isDarkMode ? 'bg-neutral-950 text-white' : 'bg-gray-50 text-gray-900'} font-sans selection:bg-lime-500/30`}>
         {currentUser && (
           <header className={`fixed top-0 w-full z-40 px-6 py-4 flex justify-between items-center ${isDarkMode ? 'bg-neutral-950/80' : 'bg-white/80'} backdrop-blur-md border-b ${isDarkMode ? 'border-neutral-900' : 'border-gray-200'}`}>
             <FinTrackLogo />
@@ -163,7 +428,7 @@ export const AppContent: React.FC = () => {
             <Route path="/obligations" element={<DashboardTab obligations={obligations} setObligations={setObligations} />} />
             <Route path="/settings" element={
               userProfile && currentUser ? (
-                <SettingsTab userProfile={userProfile} setUserProfile={setUserProfile} logout={handleLogout} currentUser={currentUser} />
+                <SettingsTab userProfile={userProfile} setUserProfile={setUserProfile} logout={handleLogout} currentUser={currentUser} transactions={transactions} obligations={obligations} />
               ) : <Navigate to="/login" replace />
             } />
             <Route path="*" element={<Navigate to="/home" replace />} />
@@ -205,7 +470,7 @@ export const AppContent: React.FC = () => {
                   onClick={() => navigate('/obligations')}
                   className={`p-4 rounded-2xl transition-all ${
                     activeTab === 'obligations'
-                      ? isDarkMode ? 'text-lime-400 bg-neutral-900' : 'text-lime-600 bg-lime-50'
+                      ? isDarkMode ? 'text-lime-400 bg-neutral-900' : 'text-lime-600 bg-lime-55'
                       : 'opacity-50 hover:opacity-100'
                   }`}
                 >
@@ -227,7 +492,7 @@ export const AppContent: React.FC = () => {
             <AddTransactionModal
               isOpen={showAddModal}
               onClose={() => setShowAddModal(false)}
-              onAdd={(tx) => setTransactions((prev) => [...prev, tx])}
+              onAdd={handleAddTransaction}
               categories={CATEGORIES}
               initialData={draftTx}
             />

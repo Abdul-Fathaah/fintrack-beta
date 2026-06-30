@@ -1,5 +1,6 @@
 export interface Transaction {
-  id: number;
+  id: string;
+  user_id?: string;
   amount: number;
   text: string;
   type: 'income' | 'expense' | 'investment';
@@ -8,17 +9,17 @@ export interface Transaction {
 }
 
 export interface Obligation {
-  id: string | number;
+  id: string;
+  user_id?: string;
   label: string;
   amount: number;
   isRecurring: boolean;
 }
 
 export interface User {
-  id: number;
+  id: string;
   name: string;
   email: string;
-  password?: string;
   joined?: string;
 }
 

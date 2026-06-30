@@ -10,16 +10,16 @@ import {
 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { useTheme } from '../hooks/useTheme';
-import { User, UserProfile } from '../types';
-
-// Import STORAGE_KEYS from App to ensure synchronization of keys
-import { STORAGE_KEYS } from '../App';
+import { User, UserProfile, Transaction, Obligation } from '../types';
+import { supabase } from '../utils/supabaseClient';
 
 interface SettingsTabProps {
   userProfile: UserProfile;
   setUserProfile: (profile: UserProfile) => void;
   logout: () => void;
   currentUser: User;
+  transactions: Transaction[];
+  obligations: Obligation[];
 }
 
 export const SettingsTab: React.FC<SettingsTabProps> = ({
@@ -27,6 +27,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   setUserProfile,
   logout,
   currentUser,
+  transactions,
+  obligations,
 }) => {
   const { isDarkMode, toggleTheme } = useTheme();
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -47,12 +49,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   };
 
   const handleExport = () => {
-    const suffix = `_${currentUser.id}`;
     const data = {
-      profile: JSON.parse(localStorage.getItem(STORAGE_KEYS.PROFILE + suffix) || 'null'),
-      transactions: JSON.parse(localStorage.getItem(STORAGE_KEYS.TRANSACTIONS + suffix) || 'null'),
-      obligations: JSON.parse(localStorage.getItem(STORAGE_KEYS.OBLIGATIONS + suffix) || 'null'),
-      theme: JSON.parse(localStorage.getItem(STORAGE_KEYS.THEME) || 'null'),
+      profile: userProfile,
+      transactions: transactions,
+      obligations: obligations,
     };
     const link = document.createElement('a');
     link.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
@@ -64,19 +64,54 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const resultText = event.target?.result as string;
         const data = JSON.parse(resultText);
-        const suffix = `_${currentUser.id}`;
-        if (data.profile) localStorage.setItem(STORAGE_KEYS.PROFILE + suffix, JSON.stringify(data.profile));
-        if (data.transactions) localStorage.setItem(STORAGE_KEYS.TRANSACTIONS + suffix, JSON.stringify(data.transactions));
-        if (data.obligations) localStorage.setItem(STORAGE_KEYS.OBLIGATIONS + suffix, JSON.stringify(data.obligations));
+        
+        // 1. Sync Profile
+        if (data.profile) {
+          await supabase.from('profiles').upsert({
+            id: currentUser.id,
+            name: data.profile.name,
+            email: data.profile.email || currentUser.email,
+            monthly_savings_target: data.profile.monthlySavingsTarget || 0,
+          });
+        }
+        
+        // 2. Sync Obligations
+        if (data.obligations && Array.isArray(data.obligations)) {
+          await supabase.from('obligations').delete().eq('user_id', currentUser.id);
+          const obsToInsert = data.obligations.map((o: any) => ({
+            id: crypto.randomUUID(),
+            user_id: currentUser.id,
+            label: o.label,
+            amount: o.amount || 0,
+            is_recurring: o.isRecurring ?? true,
+          }));
+          await supabase.from('obligations').insert(obsToInsert);
+        }
+
+        // 3. Sync Transactions
+        if (data.transactions && Array.isArray(data.transactions)) {
+          await supabase.from('transactions').delete().eq('user_id', currentUser.id);
+          const txsToInsert = data.transactions.map((t: any) => ({
+            id: crypto.randomUUID(),
+            user_id: currentUser.id,
+            amount: t.amount || 0,
+            text: t.text || 'Imported',
+            type: t.type,
+            category: t.category || 'Other',
+            date: t.date ? t.date.split('T')[0] : new Date().toISOString().split('T')[0],
+          }));
+          await supabase.from('transactions').insert(txsToInsert);
+        }
+
         alert('Import successful! Reloading...');
         window.location.reload();
       } catch (error) {
         console.error(error);
-        alert('Invalid backup file.');
+        alert('Invalid backup file or sync error.');
       }
     };
     reader.readAsText(file);
