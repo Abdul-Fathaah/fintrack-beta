@@ -14,15 +14,7 @@ import { ThemeContext } from './hooks/useTheme';
 import { Transaction, Obligation, User, UserProfile } from './types';
 import { supabase } from './utils/supabaseClient';
 
-export const STORAGE_KEYS = {
-  TRANSACTIONS: 'ft_client_transactions_v1',
-  GOALS: 'ft_client_goals_v1',
-  OBLIGATIONS: 'ft_client_obligations_v1',
-  CORPUS: 'ft_client_corpus_v1',
-  PROFILE: 'ft_client_profile_v1',
-  SESSION: 'ft_client_session_v1',
-  THEME: 'ft_client_theme_v1',
-};
+const THEME_STORAGE_KEY = 'ft_client_theme_v1';
 
 const INITIAL_TRANSACTIONS: Transaction[] = [];
 const INITIAL_OBLIGATIONS: Obligation[] = [
@@ -39,12 +31,12 @@ export const AppContent: React.FC = () => {
   const location = useLocation();
 
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.THEME);
+    const saved = localStorage.getItem(THEME_STORAGE_KEY);
     return saved ? JSON.parse(saved) : true;
   });
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.THEME, JSON.stringify(isDarkMode));
+    localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(isDarkMode));
     if (isDarkMode) document.documentElement.classList.add('dark');
     else document.documentElement.classList.remove('dark');
   }, [isDarkMode]);
@@ -58,6 +50,14 @@ export const AppContent: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [draftTx, setDraftTx] = useState<{ amount: number | ''; text: string; type: 'income' | 'expense' | 'investment' } | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
 
   // Sync profile changes to Supabase
   useEffect(() => {
@@ -96,7 +96,7 @@ export const AppContent: React.FC = () => {
 
         // Upsert current obligations
         if (obligations.length > 0) {
-          await supabase.from('obligations').upsert(
+          const { error } = await supabase.from('obligations').upsert(
             obligations.map((o) => ({
               id: o.id,
               user_id: currentUser.id,
@@ -105,9 +105,13 @@ export const AppContent: React.FC = () => {
               is_recurring: o.isRecurring,
             }))
           );
+          if (error) {
+            setToast({ message: `Obligations sync failed: ${error.message}`, type: 'error' });
+          }
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Error syncing obligations to Supabase:', err);
+        setToast({ message: `Sync failed: ${err.message || 'Database error'}`, type: 'error' });
       }
     }, 800);
 
@@ -185,130 +189,10 @@ export const AppContent: React.FC = () => {
         }));
       }
       setTransactions(loadedTransactions);
-
-      // 4. Run Legacy Migration Check
-      await runLegacyMigration(userObj.email, authInst.id, loadedTransactions, loadedObligations, profile);
     } catch (err) {
       console.error('Error loading user data from Supabase:', err);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const runLegacyMigration = async (
-    email: string,
-    newUserId: string,
-    currentTransactions: Transaction[],
-    currentObligations: Obligation[],
-    currentProfile: UserProfile
-  ) => {
-    try {
-      const usersDbRaw = localStorage.getItem('ft_client_users_db');
-      if (!usersDbRaw) return;
-
-      const users: any[] = JSON.parse(usersDbRaw);
-      const legacyUser = users.find((u) => u.email === email);
-      if (!legacyUser) return;
-
-      const legacyUserId = legacyUser.id;
-      const suffix = `_${legacyUserId}`;
-
-      const legacyTxRaw = localStorage.getItem(STORAGE_KEYS.TRANSACTIONS + suffix);
-      const legacyOblRaw = localStorage.getItem(STORAGE_KEYS.OBLIGATIONS + suffix);
-      const legacyProfileRaw = localStorage.getItem(STORAGE_KEYS.PROFILE + suffix);
-
-      let migratedCount = 0;
-
-      // Migrate profile savings target if local exists and cloud target is 0
-      if (legacyProfileRaw && currentProfile.monthlySavingsTarget === 0) {
-        const legacyProfile = JSON.parse(legacyProfileRaw);
-        if (legacyProfile.monthlySavingsTarget > 0) {
-          const updatedProfile = { ...currentProfile, monthlySavingsTarget: legacyProfile.monthlySavingsTarget };
-          setUserProfile(updatedProfile);
-          await supabase.from('profiles').upsert({
-            id: newUserId,
-            name: updatedProfile.name,
-            email: updatedProfile.email || email,
-            monthly_savings_target: updatedProfile.monthlySavingsTarget,
-          });
-          migratedCount++;
-        }
-      }
-
-      // Migrate transactions if local exists and cloud database is empty
-      if (legacyTxRaw && currentTransactions.length === 0) {
-        const legacyTx: any[] = JSON.parse(legacyTxRaw);
-        if (legacyTx.length > 0) {
-          const txsToInsert = legacyTx.map((t) => ({
-            id: crypto.randomUUID(),
-            user_id: newUserId,
-            amount: Number(t.amount) || 0,
-            text: t.text || 'Imported Transaction',
-            type: t.type,
-            category: t.category || 'Other',
-            date: t.date ? t.date.split('T')[0] : new Date().toISOString().split('T')[0],
-          }));
-
-          const { error } = await supabase.from('transactions').insert(txsToInsert);
-          if (!error) {
-            setTransactions(
-              txsToInsert.map((t) => ({
-                id: t.id,
-                amount: t.amount,
-                text: t.text,
-                type: t.type,
-                category: t.category,
-                date: t.date,
-              }))
-            );
-            migratedCount++;
-          }
-        }
-      }
-
-      // Migrate obligations if local exists and cloud database has default values
-      if (legacyOblRaw && currentObligations.length <= INITIAL_OBLIGATIONS.length) {
-        const legacyObl: any[] = JSON.parse(legacyOblRaw);
-        const hasLegacyValues = legacyObl.some((o) => o.amount > 0);
-        if (hasLegacyValues) {
-          const obsToUpsert = legacyObl.map((o) => ({
-            id: crypto.randomUUID(),
-            user_id: newUserId,
-            label: o.label,
-            amount: Number(o.amount) || 0,
-            is_recurring: o.isRecurring ?? true,
-          }));
-
-          const { error } = await supabase.from('obligations').upsert(obsToUpsert);
-          if (!error) {
-            setObligations(
-              obsToUpsert.map((o) => ({
-                id: o.id,
-                label: o.label,
-                amount: o.amount,
-                isRecurring: o.is_recurring,
-              }))
-            );
-            migratedCount++;
-          }
-        }
-      }
-
-      if (migratedCount > 0) {
-        console.log(`Legacy migration successful. Cleaned up legacy localStorage keys.`);
-        localStorage.removeItem(STORAGE_KEYS.TRANSACTIONS + suffix);
-        localStorage.removeItem(STORAGE_KEYS.OBLIGATIONS + suffix);
-        localStorage.removeItem(STORAGE_KEYS.PROFILE + suffix);
-
-        const updatedUsers = users.filter((u) => u.email !== email);
-        if (updatedUsers.length > 0) {
-          localStorage.setItem('ft_client_users_db', JSON.stringify(updatedUsers));
-        } else {
-          localStorage.removeItem('ft_client_users_db');
-        }
-      }
-    } catch (e) {
-      console.error('Failed to run legacy data migration:', e);
     }
   };
 
@@ -354,20 +238,32 @@ export const AppContent: React.FC = () => {
   };
 
   const handleAddTransaction = async (tx: Transaction) => {
+    // Optimistically add transaction to UI
     setTransactions((prev) => [...prev, tx]);
     if (currentUser) {
-      try {
-        await supabase.from('transactions').insert({
-          id: tx.id,
-          user_id: currentUser.id,
-          amount: tx.amount,
-          text: tx.text,
-          type: tx.type,
-          category: tx.category,
-          date: tx.date.split('T')[0],
+      const { error } = await supabase.from('transactions').insert({
+        id: tx.id,
+        user_id: currentUser.id,
+        amount: tx.amount,
+        text: tx.text,
+        type: tx.type,
+        category: tx.category,
+        date: tx.date.split('T')[0],
+      });
+
+      if (error) {
+        console.error('Error inserting transaction into Supabase:', error);
+        // Rollback state if insert fails
+        setTransactions((prev) => prev.filter((t) => t.id !== tx.id));
+        setToast({
+          message: `Failed to save transaction: ${error.message || 'Database error'}`,
+          type: 'error'
         });
-      } catch (err) {
-        console.error('Error inserting transaction into Supabase:', err);
+      } else {
+        setToast({
+          message: 'Transaction saved successfully',
+          type: 'success'
+        });
       }
     }
   };
@@ -406,6 +302,15 @@ export const AppContent: React.FC = () => {
   return (
     <ThemeContext.Provider value={{ isDarkMode, toggleTheme }}>
       <div className={`min-h-screen transition-colors duration-300 ${isDarkMode ? 'bg-neutral-950 text-white' : 'bg-gray-50 text-gray-900'} font-sans selection:bg-lime-500/30`}>
+        {toast && (
+          <div className={`fixed top-20 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-3 rounded-2xl shadow-lg border transition-all duration-300 ${
+            toast.type === 'error'
+              ? 'bg-red-500/10 border-red-500/30 text-red-500'
+              : 'bg-lime-500/10 border-lime-500/30 text-lime-500'
+          }`}>
+            <span className="text-sm font-semibold">{toast.message}</span>
+          </div>
+        )}
         {currentUser && (
           <header className={`fixed top-0 w-full z-40 px-6 py-4 flex justify-between items-center ${isDarkMode ? 'bg-neutral-950/80' : 'bg-white/80'} backdrop-blur-md border-b ${isDarkMode ? 'border-neutral-900' : 'border-gray-200'}`}>
             <FinTrackLogo />

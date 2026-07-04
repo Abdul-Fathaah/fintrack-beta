@@ -1,30 +1,22 @@
 FinTrack - Personal Finance Manager
 
-FinTrack is a privacy-focused, offline-first personal finance application designed to simplify expense tracking and budgeting. It features an intelligent text parser that allows users to log transactions by simply pasting SMS or clipboard text, eliminating manual data entry fatigue.
+FinTrack is a privacy-focused, cloud-synchronized personal finance application designed to simplify expense tracking and budgeting. It features secure user authentication and cloud database synchronization powered by Supabase, alongside an intelligent text parser that allows users to log transactions by simply pasting SMS or clipboard text.
 
 🚀 Features
 
-Smart SMS Parsing: Automatically extracts amount, merchant, and category from copied transaction texts.
-
-Dynamic Discretionary Budget: Calculates your "Safe-to-Spend" limit by deducting fixed monthly obligations (Rent, EMI, SIP) from your income in real-time.
-
-Offline-First & Private: All data is stored locally on your device (localStorage). No external servers, no tracking, complete privacy.
-
-Goal Tracking: Set savings targets and get automatic calculations for monthly savings required.
-
-Backup & Restore: Export your entire financial history to a JSON file for backup or transfer between devices.
-
-Installable PWA: Functions as a native app on mobile devices (iOS/Android) with full offline support.
+* **Smart SMS Parsing**: Automatically extracts amount, merchant, and category from copied transaction texts.
+* **Dynamic Discretionary Budget**: Calculates your "Safe-to-Spend" limit by deducting fixed monthly obligations (Rent, EMI, SIP) from your income in real-time.
+* **Cloud Sync & Security**: All transaction and obligation data is synced to your private Supabase database. Protected by Row Level Security (RLS) so that only you can view and edit your data.
+* **Goal Tracking**: Set savings targets and get automatic calculations for monthly savings required.
+* **Backup & Restore**: Export your entire financial history to a JSON file for backup or sync manual exports.
+* **Installable PWA**: Functions as a native app on mobile devices (iOS/Android) with full offline support.
 
 🛠️ Tech Stack
 
-Frontend: React (Vite)
-
-Styling: Tailwind CSS
-
-Icons: Lucide React
-
-State Persistence: LocalStorage API
+* **Frontend**: React (Vite)
+* **Styling**: Tailwind CSS
+* **Icons**: Lucide React
+* **Backend & Auth**: Supabase (PostgreSQL with RLS)
 
 🏁 Getting Started
 
@@ -32,7 +24,21 @@ Follow these steps to run the project locally on your machine.
 
 Prerequisites
 
-Node.js (v16 or higher) installed.
+* Node.js (v16 or higher) installed.
+* A Supabase project initialized.
+
+Database Setup
+
+Before starting the application, run the SQL script in [schema.sql](file:///c:/Users/fatha/fintrack-beta/schema.sql) in your Supabase SQL Editor. This will create the `profiles`, `transactions`, and `obligations` tables, and set up Row Level Security (RLS) policies.
+
+Environment Config
+
+Create a `.env` file in the root directory with your Supabase credentials:
+
+```env
+VITE_SUPABASE_URL=https://your-project-id.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+```
 
 Installation
 
