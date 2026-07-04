@@ -322,7 +322,7 @@ export const AppContent: React.FC = () => {
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         loadUserData(session.user);
       } else {
@@ -470,7 +470,7 @@ export const AppContent: React.FC = () => {
                   onClick={() => navigate('/obligations')}
                   className={`p-4 rounded-2xl transition-all ${
                     activeTab === 'obligations'
-                      ? isDarkMode ? 'text-lime-400 bg-neutral-900' : 'text-lime-600 bg-lime-55'
+                      ? isDarkMode ? 'text-lime-400 bg-neutral-900' : 'text-lime-600 bg-lime-50'
                       : 'opacity-50 hover:opacity-100'
                   }`}
                 >

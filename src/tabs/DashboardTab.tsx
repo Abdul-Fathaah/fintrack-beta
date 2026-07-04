@@ -71,7 +71,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ obligations, setObli
             ₹ {totalMonthlyObligations.toLocaleString('en-IN')}
           </h3>
         </div>
-        <div className={`p-4 rounded-full ${isDarkMode ? 'bg-neutral-800' : 'bg-lime-55'}`}>
+        <div className={`p-4 rounded-full ${isDarkMode ? 'bg-neutral-800' : 'bg-lime-50'}`}>
           <Wallet size={24} className="text-lime-500" />
         </div>
       </Card>

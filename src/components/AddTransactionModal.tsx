@@ -22,6 +22,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [amount, setAmount] = useState<string>('');
   const [text, setText] = useState<string>('');
   const [type, setType] = useState<'income' | 'expense' | 'investment'>('expense');
+  const [category, setCategory] = useState<string>('');
 
   // Synchronize state when initialData or modal open status changes
   useEffect(() => {
@@ -29,10 +30,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       setAmount(initialData?.amount?.toString() || '');
       setText(initialData?.text || '');
       setType(initialData?.type || 'expense');
+      setCategory(initialData?.category || categories[0]);
     }
-  }, [isOpen, initialData]);
-
-  const category = initialData?.category || categories[0];
+  }, [isOpen, initialData, categories]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,6 +109,30 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
             }`}
             placeholder="What is this for?"
           />
+        </div>
+        <div>
+          <label
+            className={`text-xs font-medium ml-1 mb-1 block ${
+              isDarkMode ? 'text-neutral-400' : 'text-gray-500'
+            }`}
+          >
+            Category
+          </label>
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            className={`w-full p-4 rounded-xl outline-none border transition-all ${
+              isDarkMode
+                ? 'bg-neutral-800 border-neutral-700 text-white focus:border-lime-500'
+                : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-lime-500'
+            }`}
+          >
+            {categories.map((cat) => (
+              <option key={cat} value={cat} className={isDarkMode ? 'bg-neutral-800 text-white' : 'bg-white text-gray-900'}>
+                {cat}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="grid grid-cols-3 gap-2">
           {(['expense', 'income', 'investment'] as const).map((t) => (

@@ -147,7 +147,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
               className={`w-full p-3 rounded-xl border outline-none ${
-                isDarkMode ? 'bg-neutral-800 border-neutral-700 text-white' : 'bg-gray-55 border-gray-200'
+                isDarkMode ? 'bg-neutral-800 border-neutral-700 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'
               }`}
             />
           </div>
@@ -164,7 +164,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               value={editEmail}
               onChange={(e) => setEditEmail(e.target.value)}
               className={`w-full p-3 rounded-xl border outline-none ${
-                isDarkMode ? 'bg-neutral-800 border-neutral-700 text-white' : 'bg-gray-55 border-gray-200'
+                isDarkMode ? 'bg-neutral-800 border-neutral-700 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'
               }`}
             />
           </div>
@@ -185,7 +185,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               onChange={(e) => setEditSavingsTarget(e.target.value)}
               placeholder="0"
               className={`w-full p-3 pl-4 rounded-xl border outline-none ${
-                isDarkMode ? 'bg-neutral-800 border-neutral-700 text-white' : 'bg-gray-55 border-gray-200'
+                isDarkMode ? 'bg-neutral-800 border-neutral-700 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'
               }`}
             />
           </div>
