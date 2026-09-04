@@ -50,20 +50,20 @@ VITE_SUPABASE_ANON_KEY=your-anon-key
 Installation
 
 Clone the repository:
-
+```
 git clone [https://github.com/YOUR_USERNAME/fintrack-client.git](https://github.com/YOUR_USERNAME/fintrack-client.git)
 cd fintrack-client
-
+```
 
 Install dependencies:
-
+```
 npm install
-
+```
 
 Start the development server:
-
+```
 npm run dev
-
+```
 
 Open the app:
 Click the link shown in the terminal (usually http://localhost:5173).
