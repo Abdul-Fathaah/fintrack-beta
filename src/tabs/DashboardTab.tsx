@@ -11,17 +11,12 @@ import {
   TrendingDown,
   Menu,
   Filter,
-  Activity,
-  PiggyBank,
-  Calendar,
-  Settings
+  PiggyBank
 } from 'lucide-react';
 import {
   PieChart,
   Pie,
   Cell,
-  BarChart,
-  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -36,15 +31,14 @@ import { useTheme } from '../hooks/useTheme';
 import { Obligation } from '../types';
 import { Transaction } from '../types';
 import { UserProfile } from '../types';
-import { Button } from '../components/ui/button';
 
 const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#8dd1e1', '#b8e986', '#ff9a76', '#d0bbff', '#fff1b8', '#edea9e'];
 
 interface DashboardTabProps {
-  transactions: Transaction[];
+  transactions?: Transaction[];
   obligations: Obligation[];
   setObligations: (value: Obligation[] | ((prev: Obligation[]) => Obligation[])) => void;
-  userProfile: UserProfile | null;
+  userProfile?: UserProfile | null;
 }
 
 interface FinancialSummary {
@@ -65,10 +59,10 @@ interface ObligationStats {
 }
 
 export const DashboardTab: React.FC<DashboardTabProps> = ({
-  transactions,
+  transactions = [],
   obligations,
   setObligations,
-  userProfile
+  userProfile = null
 }) => {
   const { isDarkMode } = useTheme();
   const [isEditingObligations, setIsEditingObligations] = useState(false);
@@ -370,7 +364,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         {/* Income vs Expense Trend */}
         <Card className="p-5">
           <div className="flex justify-between items-center mb-4">
-            <h3 className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            <h3 className={isDarkMode ? 'font-semibold text-white' : 'font-semibold text-gray-900'}>
               Income vs Expense Trend
             </h3>
             <div className="flex items-center gap-2 text-sm">
@@ -391,16 +385,16 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   data={monthlyTrend}
                   margin={{ top: 20, right: 30, left: 0, bottom: 5 }}
                 >
-                  <Defs>
-                    <LinearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
-                      <Stop offset="0" stopColor={isDarkMode ? '#4ade80' : '#10b981'} stopOpacity={0.8} />
-                      <Stop offset="1" stopColor={isDarkMode ? '#4ade80' : '#10b981'} stopOpacity={0} />
-                    </LinearGradient>
-                    <LinearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1">
-                      <Stop offset="0" stopColor={isDarkMode ? '#f87171' : '#ef4444'} stopOpacity={0.8} />
-                      <Stop offset="1" stopColor={isDarkMode ? '#f87171' : '#ef4444'} stopOpacity={0} />
-                    </LinearGradient>
-                  </Defs>
+                  <defs>
+                    <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0" stopColor={isDarkMode ? '#4ade80' : '#10b981'} stopOpacity={0.8} />
+                      <stop offset="1" stopColor={isDarkMode ? '#4ade80' : '#10b981'} stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0" stopColor={isDarkMode ? '#f87171' : '#ef4444'} stopOpacity={0.8} />
+                      <stop offset="1" stopColor={isDarkMode ? '#f87171' : '#ef4444'} stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis
                     dataKey="month"
@@ -414,25 +408,16 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                       fontSize: 12,
                       fill: isDarkMode ? '#ccc' : '#666'
                     }}
-                  >
-                    <YAxis
-                      orientation="right"
-                      tick={{
-                        fontSize: 12,
-                        fill: isDarkMode ? '#ccc' : '#666'
-                      }}
-                    />
-                  </YAxis>
-                  <Tooltip
-                    formatter={(value: number) => `₹${value.toLocaleString()}}`
-                    contentStyle={{
-                      background: isDarkMode ? '#1f2937' : '#fff',
-                      border: isDarkMode ? '1px solid #374151' : '1px solid #e5e7eb'
-                    }}
-                    labelStyle={{
+                  />
+                  <YAxis
+                    orientation="right"
+                    tick={{
                       fontSize: 12,
-                      fill: isDarkMode ? '#fff' : '#111'
+                      fill: isDarkMode ? '#ccc' : '#666'
                     }}
+                  />
+                  <Tooltip
+                    formatter={(value: any) => `₹${Number(value || 0).toLocaleString()}`}
                   />
                   <Legend
                     verticalAlign="top"
@@ -464,7 +449,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     isAnimationActive={false}
                   >
                     {monthlyTrend.map((entry, index) => (
-                      <Dot key={`income-${index}`} cx={entry.month} cy={entry.income} r={4} fill={isDarkMode ? '#4ade80' : '#10b981'} />
+                      <Dot key={'income-' + index} cx={entry.month} cy={entry.income} r={4} fill={isDarkMode ? '#4ade80' : '#10b981'} />
                     ))}
                   </Line>
                   <Line
@@ -477,7 +462,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     isAnimationActive={false}
                   >
                     {monthlyTrend.map((entry, index) => (
-                      <Dot key={`expense-${index}`} cx={entry.month} cy={entry.expense} r={4} fill={isDarkMode ? '#f87171' : '#ef4444'} />
+                      <Dot key={'expense-' + index} cx={entry.month} cy={entry.expense} r={4} fill={isDarkMode ? '#f87171' : '#ef4444'} />
                     ))}
                   </Line>
                 </LineChart>
@@ -493,7 +478,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         {/* Obligations Breakdown */}
         <Card className="p-5">
           <div className="flex justify-between items-center mb-4">
-            <h3 className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            <h3 className={isDarkMode ? 'font-semibold text-white' : 'font-semibold text-gray-900'}>
               Obligations Breakdown
             </h3>
           </div>
@@ -512,15 +497,15 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     outerRadius={120}
                     labelLine={false}
                     label={({ name, value, percentage }: any) =>
-                      `${name}\n₹{value.toLocaleString()}\n{percentage.toFixed(1)}%`
+                      name + '\n₹' + value.toLocaleString() + '\n' + percentage.toFixed(1) + '%'
                     }
                   >
                     {obligationsByAmount.map((_, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      <Cell key={'cell-' + index} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
                   <Tooltip
-                    formatter={(value: number) => `₹${value.toLocaleString()}}`
+                    formatter={(value: any) => '₹' + Number(value || 0).toLocaleString()}
                   />
                   <Legend
                     verticalAlign="bottom"
@@ -539,7 +524,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       {/* Insights & Recommendations */}
       <Card className="p-5">
         <div className="flex justify-between items-center mb-4">
-          <h3 className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+          <h3 className={isDarkMode ? 'font-semibold text-white' : 'font-semibold text-gray-900'}>
             Financial Insights
           </h3>
           <button
@@ -654,17 +639,17 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   {financialSummary.savingsRate.toFixed(1)}%
                 </span>.
                 {financialSummary.savingsRate >= 20
-                  : 'Excellent! You\'re saving more than the recommended 20%.'
+                  ? 'Excellent! You\'re saving more than the recommended 20%.'
                   : financialSummary.savingsRate >= 10
-                    : 'Good! You\'re saving more than the minimum recommended 10%.'
+                    ? 'Good! You\'re saving more than the minimum recommended 10%.'
                     : financialSummary.savingsRate > 0
-                      : 'You\'re saving, but consider increasing to reach 10-20%.'
+                      ? 'You\'re saving, but consider increasing to reach 10-20%.'
                       : 'You\'re not saving anything - consider creating a budget to start saving.'}
               </p>
             </div>
           </div>
         </div>
-      </div>
+      </Card>
     </div>
   );
 
@@ -674,7 +659,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       <div className="flex justify-between items-center mb-4">
         <h2 className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
           Manage Obligations
-        </div>
+        </h2>
         <div className="flex items-center gap-3">
           <button
             onClick={() => setIsEditingObligations(!isEditingObligations)}
@@ -819,7 +804,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       <p className="text-[10px] text-center opacity-40 px-4">
         Items with <span className="text-lime-500">Green Lock</span> are Recurring and auto-deducted
         from your Safe-to-Spend limit.
-      </div>
+      </p>
     </div>
   );
 
@@ -829,7 +814,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       <div className="flex justify-between items-center mb-4">
         <h2 className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
           Savings Goals
-        </div>
+        </h2>
         <button
           onClick={() => {}}
           className={`text-xs px-3 py-1 rounded-full ${
@@ -851,7 +836,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 <PiggyBank size={20} className="text-purple-400" />
               </div>
               <div>
-                <h3 className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                <h3 className={isDarkMode ? 'font-semibold text-white' : 'font-semibold text-gray-900'}>
                   Active Goals
                 </h3>
                 <p className="text-sm text-gray-500">
@@ -925,7 +910,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                         </div>
                       </div>
                       <div className="flex-1">
-                        <p className="font-medium mb-1">${isDarkMode ? 'text-white' : 'text-gray-900'}</p>
+                        <p className={`font-medium mb-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                          Emergency Fund
+                        </p>
                         <p className="text-sm text-gray-500">
                           Build an emergency fund covering 3-6 months of expenses
                         </p>
@@ -946,7 +933,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                         </div>
                       </div>
                       <div className="flex-1">
-                        <p className="font-medium mb-1">${isDarkMode ? 'text-white' : 'text-gray-900'}</p>
+                        <p className={`font-medium mb-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                          Debt Payoff
+                        </p>
                         <p className="text-sm text-gray-500">
                           Accelerate debt repayment to save on interest
                         </p>
@@ -982,7 +971,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             </div>
           ) : (
             <div className="text-center py-8">
-              <p className="text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}"}>
+              <p className={`text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                 No Savings Goal Set
               </p>
               <p className="text-sm text-gray-500 mb-4">
@@ -1002,7 +991,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       {/* Goal History & Templates */}
       <Card className="p-5">
         <div className="flex justify-between items-center mb-4">
-          <h3 className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+          <h3 className={isDarkMode ? 'font-semibold text-white' : 'font-semibold text-gray-900'}>
             Goal Templates
           </h3>
           <button
@@ -1024,11 +1013,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 </div>
               </div>
               <div className="flex-1">
-                <p className="font-medium mb-1">${isDarkMode ? 'text-white' : 'text-gray-900'}</p>
-                <p className="text-sm text-gray-500">
+                <p className={`font-medium mb-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                   Vacation Fund
                 </p>
-                <p className="text-xs text-gray-500">
+                <p className="text-sm text-gray-500">
                   Save for your next getaway
                 </p>
                 <div className="flex items-center mt-2">
@@ -1046,11 +1034,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 </div>
               </div>
               <div className="flex-1">
-                <p className="font-medium mb-1">${isDarkMode ? 'text-white' : 'text-gray-900'}</p>
-                <p className="text-sm text-gray-500">
+                <p className={`font-medium mb-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                   Home Down Payment
                 </p>
-                <p className="text-xs text-gray-500">
+                <p className="text-sm text-gray-500">
                   Save for a down payment on a house
                 </p>
                 <div className="flex items-center mt-2">
@@ -1068,11 +1055,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 </div>
               </div>
               <div className="flex-1">
-                <p className="font-medium mb-1">${isDarkMode ? 'text-white' : 'text-gray-900'}</p>
-                <p className="text-sm text-gray-500">
+                <p className={`font-medium mb-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                   Education Fund
                 </p>
-                <p className="text-xs text-gray-500">
+                <p className="text-sm text-gray-500">
                   Save for education or skill development
                 </p>
                 <div className="flex items-center mt-2">
@@ -1090,11 +1076,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 </div>
               </div>
               <div className="flex-1">
-                <p className="font-medium mb-1">${isDarkMode ? 'text-white' : 'text-gray-900'}</p>
-                <p className="text-sm text-gray-500">
+                <p className={`font-medium mb-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                   Retirement Savings
                 </p>
-                <p className="text-xs text-gray-500">
+                <p className="text-sm text-gray-500">
                   Save for your future financial security
                 </p>
                 <div className="flex items-center mt-2">
@@ -1106,7 +1091,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             </div>
           </Card>
         </div>
-      </div>
+      </Card>
     </div>
   );
 
@@ -1122,7 +1107,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       <div className="flex justify-between items-center mb-6">
         <h2 className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
           Financial Dashboard
-        </div>
+        </h2>
         <div className="flex items-center gap-3">
           <button
             onClick={() => setActiveTab('overview')}
@@ -1179,37 +1164,53 @@ const Dot = ({ cx, cy, r, fill }: { cx: string | number; cy: string | number; r:
   <circle cx={cx} cy={cy} r={r} fill={fill} />
 );
 
-// Helper components for goal templates (since we don't have actual icons for all)
-const Shield = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-</svg>;
+interface IconProps {
+  size?: number;
+  className?: string;
+}
 
-const CreditCard = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-  <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
-  <line x1="1" y1="10" x2="23" y2="10"/>
-</svg>;
+const Shield = ({ size = 18, className = '' }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+  </svg>
+);
 
-const Plane = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-</svg>;
+const CreditCard = ({ size = 18, className = '' }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+    <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
+    <line x1="1" y1="10" x2="23" y2="10"/>
+  </svg>
+);
 
-const Home = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-</svg>;
+const Plane = ({ size = 18, className = '' }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+  </svg>
+);
 
-const BookOpen = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-  <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3V2z"/>
-  <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 0 3-3Vz"/>
-</svg>;
+const Home = ({ size = 18, className = '' }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+  </svg>
+);
 
-const Sun = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-  <circle cx="12" cy="12" r="5"/>
-  <path d="M12 2v2"/>
-  <path d="M12 20v2"/>
-  <path d="M4.93 4.93l2.12-2.12"/>
-  <path d="M18.36 18.36l2.12 2.12"/>
-  <path d="M2 12h2"/>
-  <path d="M20 12h2"/>
-  <path d="M6.34 17.66l-2.12 2.12"/>
-  <path d="M17.66 6.34l2.12-2.12"/>
-</svg>;
+const BookOpen = ({ size = 18, className = '' }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3V2z"/>
+    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 0 3-3Vz"/>
+  </svg>
+);
+
+const Sun = ({ size = 18, className = '' }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+    <circle cx="12" cy="12" r="5"/>
+    <path d="M12 2v2"/>
+    <path d="M12 20v2"/>
+    <path d="M4.93 4.93l2.12-2.12"/>
+    <path d="M18.36 18.36l2.12 2.12"/>
+    <path d="M2 12h2"/>
+    <path d="M20 12h2"/>
+    <path d="M6.34 17.66l-2.12 2.12"/>
+    <path d="M17.66 6.34l2.12-2.12"/>
+  </svg>
+);

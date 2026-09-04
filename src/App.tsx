@@ -433,7 +433,14 @@ export const AppContent: React.FC = () => {
               />
             } />
             <Route path="/analysis" element={<AnalysisTab transactions={transactions} />} />
-            <Route path="/obligations" element={<DashboardTab obligations={obligations} setObligations={setObligations} />} />
+            <Route path="/obligations" element={
+              <DashboardTab
+                transactions={transactions}
+                obligations={obligations}
+                setObligations={setObligations}
+                userProfile={userProfile}
+              />
+            } />
             <Route path="/settings" element={
               userProfile && currentUser ? (
                 <SettingsTab

@@ -29,6 +29,8 @@ dist-ssr
 .env.*
 !.env.example
 
+*.tsbuildinfo
+
 # Planning and Roadmaps
 ROADMAP.md
 

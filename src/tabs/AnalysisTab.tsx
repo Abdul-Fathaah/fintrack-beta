@@ -7,7 +7,9 @@ import {
   Share2,
   Download,
   Menu,
-  ChevronDown
+  ChevronDown,
+  Wallet,
+  Calculator
 } from 'lucide-react';
 import {
   PieChart,
@@ -22,14 +24,11 @@ import {
   Legend,
   ResponsiveContainer,
   LineChart,
-  Line,
-  TypeAhead,
-  ComposedChart
+  Line
 } from 'recharts';
 import { Card } from '../components/ui/Card';
 import { useTheme } from '../hooks/useTheme';
 import { Transaction } from '../types';
-import { Button } from '../components/ui/button';
 
 const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#8dd1e1', '#b8e986', '#ff9a76', '#d0bbff', '#fff1b8', '#edea9e'];
 
@@ -37,19 +36,19 @@ interface AnalysisTabProps {
   transactions: Transaction[];
 }
 
-interface CategoryData {
+export interface CategoryData {
   name: string;
   value: number;
   percentage: number;
 }
 
-interface MonthlyData {
+export interface MonthlyData {
   month: string;
   income: number;
   expense: number;
 }
 
-interface TrendData {
+export interface TrendData {
   date: string;
   amount: number;
   type: 'income' | 'expense';
@@ -235,7 +234,7 @@ export const AnalysisTab: React.FC<AnalysisTabProps> = ({ transactions }) => {
               outerRadius={120}
               labelLine={false}
               label={({ name, value, percentage }: any) =>
-                `${name}\n₹{value.toLocaleString()}\n{percentage.toFixed(1)}%`
+                `${name}\n₹${value.toLocaleString()}\n${percentage.toFixed(1)}%`
               }
             >
               {categoryDataWithPercentage.map((_, index) => (
@@ -243,9 +242,8 @@ export const AnalysisTab: React.FC<AnalysisTabProps> = ({ transactions }) => {
               ))}
             </Pie>
             <Tooltip
-              formatter={(value: number) => `₹${value.toLocaleString()}`}
-              formatter={(value: number, name: string) =>
-                `${name}: ₹${value.toLocaleString()}`}
+              formatter={(value: any, name: any) =>
+                `${name}: ₹${Number(value || 0).toLocaleString()}`}
             />
             <Legend
               verticalAlign="top"
@@ -278,36 +276,32 @@ export const AnalysisTab: React.FC<AnalysisTabProps> = ({ transactions }) => {
                 fontSize: 12,
                 fill: isDarkMode ? '#ccc' : '#666'
               }}
-            >
-              <YAxis
-                orientation="right"
-                tick={{
-                  fontSize: 12,
-                  fill: isDarkMode ? '#ccc' : '#666'
-                }}
-              />
-            </YAxis>
+            />
+            <YAxis
+              orientation="right"
+              tick={{
+                fontSize: 12,
+                fill: isDarkMode ? '#ccc' : '#666'
+              }}
+            />
             <Tooltip
-              formatter={(value: number) => `₹${value.toLocaleString()}}`
+              formatter={(value: any) => `₹${Number(value || 0).toLocaleString()}`}
             />
             <Legend
               verticalAlign="top"
               height={36}
-            >
-              <Legend
-                wrapperStyle={{
-                  left: 0,
-                  top: -10
-                }}
-              />
-            </Legend>
+              wrapperStyle={{
+                left: 0,
+                top: -10
+              }}
+            />
             <Bar
               dataKey="value"
               barSize={20}
               fill={isDarkMode ? '#4ade80' : '#10b981'}
               radius={[4, 4, 0, 0]}
             >
-              {categoryDataWithPercentage.slice(0, 8).map((entry, index) => (
+              {categoryDataWithPercentage.slice(0, 8).map((_, index) => (
                 <Cell key={`bar-${index}`} fill={COLORS[index % COLORS.length]} />
               ))}
             </Bar>
@@ -321,16 +315,16 @@ export const AnalysisTab: React.FC<AnalysisTabProps> = ({ transactions }) => {
             data={trendData}
             margin={{ top: 20, right: 30, left: 0, bottom: 5 }}
           >
-            <Defs>
-              <LinearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor={isDarkMode ? '#4ade80' : '#10b981'} stopOpacity={0.8} />
-                <Stop offset="1" stopColor={isDarkMode ? '#4ade80' : '#10b981'} stopOpacity={0} />
-              </LinearGradient>
-              <LinearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor={isDarkMode ? '#f87171' : '#ef4444'} stopOpacity={0.8} />
-                <Stop offset="1" stopColor={isDarkMode ? '#f87171' : '#ef4444'} stopOpacity={0} />
-              </LinearGradient>
-            </Defs>
+            <defs>
+              <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stopColor={isDarkMode ? '#4ade80' : '#10b981'} stopOpacity={0.8} />
+                <stop offset="1" stopColor={isDarkMode ? '#4ade80' : '#10b981'} stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stopColor={isDarkMode ? '#f87171' : '#ef4444'} stopOpacity={0.8} />
+                <stop offset="1" stopColor={isDarkMode ? '#f87171' : '#ef4444'} stopOpacity={0} />
+              </linearGradient>
+            </defs>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis
               dataKey="date"
@@ -338,38 +332,26 @@ export const AnalysisTab: React.FC<AnalysisTabProps> = ({ transactions }) => {
                 fontSize: 12,
                 fill: isDarkMode ? '#ccc' : '#666'
               }}
-            >
-              <XAxis
-                tickFormatter={(date: string) => {
-                  const d = new Date(date);
-                  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-                }}
-              />
-            </XAxis>
+              tickFormatter={(date: string) => {
+                const d = new Date(date);
+                return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+              }}
+            />
             <YAxis
               tick={{
                 fontSize: 12,
                 fill: isDarkMode ? '#ccc' : '#666'
               }}
-            >
-              <YAxis
-                orientation="right"
-                tick={{
-                  fontSize: 12,
-                  fill: isDarkMode ? '#ccc' : '#666'
-                }}
-              />
-            </YAxis>
-            <Tooltip
-              formatter={(value: number) => `₹${value.toLocaleString()}}`
-              contentStyle={{
-                background: isDarkMode ? '#1f2937' : '#fff',
-                border: isDarkMode ? '1px solid #374151' : '1px solid #e5e7eb'
-              }}
-              labelStyle={{
+            />
+            <YAxis
+              orientation="right"
+              tick={{
                 fontSize: 12,
-                fill: isDarkMode ? '#fff' : '#111'
+                fill: isDarkMode ? '#ccc' : '#666'
               }}
+            />
+            <Tooltip
+              formatter={(value: any) => `₹${Number(value || 0).toLocaleString()}`}
             />
             <Legend
               verticalAlign="top"
@@ -401,7 +383,7 @@ export const AnalysisTab: React.FC<AnalysisTabProps> = ({ transactions }) => {
               isAnimationActive={false}
             >
               {trendData.filter(d => d.type === 'income').map((entry, index) => (
-                <Dot key={`income-${index}`} cx={entry.date} cy={entry.amount} r={4} fill={isDarkMode ? '#4ade80' : '#10b981'} />
+                <Dot key={'income-' + index} cx={entry.date} cy={entry.amount} r={4} fill={isDarkMode ? '#4ade80' : '#10b981'} />
               ))}
             </Line>
             <Line
@@ -414,7 +396,7 @@ export const AnalysisTab: React.FC<AnalysisTabProps> = ({ transactions }) => {
               isAnimationActive={false}
             >
               {trendData.filter(d => d.type === 'expense').map((entry, index) => (
-                <Dot key={`expense-${index}`} cx={entry.date} cy={entry.amount} r={4} fill={isDarkMode ? '#f87171' : '#ef4444'} />
+                <Dot key={'expense-' + index} cx={entry.date} cy={entry.amount} r={4} fill={isDarkMode ? '#f87171' : '#ef4444'} />
               ))}
             </Line>
           </LineChart>
@@ -429,7 +411,7 @@ export const AnalysisTab: React.FC<AnalysisTabProps> = ({ transactions }) => {
       <div className="flex justify-between items-center flex-wrap gap-4">
         <div className="flex items-center gap-2">
           <Lightbulb className="h-5 w-5 text-amber-400" />
-          <h2 className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+          <h2 className={isDarkMode ? 'text-2xl font-bold text-white' : 'text-2xl font-bold text-gray-900'}>
             Financial Analysis
           </h2>
         </div>
@@ -669,7 +651,7 @@ export const AnalysisTab: React.FC<AnalysisTabProps> = ({ transactions }) => {
         {/* Category Breakdown */}
         <Card className="p-5">
           <div className="flex justify-between items-center mb-4">
-            <h3 className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            <h3 className={isDarkMode ? 'font-semibold text-white' : 'font-semibold text-gray-900'}>
               Expense Breakdown by Category
             </h3>
             <div className="flex items-center gap-2 text-sm">
@@ -720,7 +702,7 @@ export const AnalysisTab: React.FC<AnalysisTabProps> = ({ transactions }) => {
         {/* Income vs Expense Trend */}
         <Card className="p-5">
           <div className="flex justify-between items-center mb-4">
-            <h3 className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            <h3 className={isDarkMode ? 'font-semibold text-white' : 'font-semibold text-gray-900'}>
               Income vs Expense Trend
             </h3>
             <div className="flex items-center gap-2 text-sm">
@@ -758,7 +740,7 @@ export const AnalysisTab: React.FC<AnalysisTabProps> = ({ transactions }) => {
       {/* Insights Section */}
       <Card className="p-5">
         <div className="flex justify-between items-center mb-4">
-          <h3 className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+          <h3 className={isDarkMode ? 'font-semibold text-white' : 'font-semibold text-gray-900'}>
             Key Insights & Recommendations
           </h3>
           <button
@@ -850,10 +832,13 @@ export const AnalysisTab: React.FC<AnalysisTabProps> = ({ transactions }) => {
               <p className={`text-sm ${isDarkMode ? 'text-neutral-300' : 'text-gray-600'}`}>
                 Your income shows
                 <span className="font-semibold">
-                  {monthlyData.length >= 2 ?
-                    Math.abs((monthlyData[monthlyData.length - 1].income - monthlyData[monthlyData.length - 2].income) /
-                    (monthlyData[monthlyData.length - 2].income || 1) * 100).toFixed(1)}%
-                  : '0%'
+                  {monthlyData.length >= 2
+                    ? `${Math.abs(
+                        ((monthlyData[monthlyData.length - 1].income - monthlyData[monthlyData.length - 2].income) /
+                          (monthlyData[monthlyData.length - 2].income || 1)) *
+                          100
+                      ).toFixed(1)}%`
+                    : '0%'}
                 </span> month-over-month change, indicating
                 <span className="font-semibold">
                   {monthlyData.length >= 2 && Math.abs((monthlyData[monthlyData.length - 1].income - monthlyData[monthlyData.length - 2].income) /
@@ -865,12 +850,12 @@ export const AnalysisTab: React.FC<AnalysisTabProps> = ({ transactions }) => {
             </div>
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* Recent Transactions */}
       <Card className="p-5">
         <div className="flex justify-between items-center mb-4">
-          <h3 className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+          <h3 className={isDarkMode ? 'font-semibold text-white' : 'font-semibold text-gray-900'}>
             Recent Transactions
           </h3>
           <button
@@ -910,7 +895,7 @@ export const AnalysisTab: React.FC<AnalysisTabProps> = ({ transactions }) => {
                         ? 'text-red-400'
                         : 'text-red-600'}
                     `}>
-                      {transaction.type === 'income' ? '+' : '-'}{₹{transaction.amount.toLocaleString()}}
+                      {transaction.type === 'income' ? '+' : '-'}₹{transaction.amount.toLocaleString()}
                     </p>
                   </div>
                 </div>
@@ -924,7 +909,7 @@ export const AnalysisTab: React.FC<AnalysisTabProps> = ({ transactions }) => {
             </p>
           )}
         </div>
-      </div>
+      </Card>
     </div>
   );
 };
