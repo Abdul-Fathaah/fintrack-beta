@@ -6,7 +6,10 @@ import {
   Upload,
   Moon,
   Sun,
-  LogOut
+  LogOut,
+  Sparkles,
+  Cpu,
+  Check
 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { useTheme } from '../hooks/useTheme';
@@ -20,6 +23,9 @@ interface SettingsTabProps {
   currentUser: User;
   transactions: Transaction[];
   obligations: Obligation[];
+  isAutoDetectEnabled?: boolean;
+  toggleAutoDetect?: () => void;
+  onOpenSimulate?: () => void;
 }
 
 export const SettingsTab: React.FC<SettingsTabProps> = ({
@@ -29,6 +35,9 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   currentUser,
   transactions,
   obligations,
+  isAutoDetectEnabled = true,
+  toggleAutoDetect,
+  onOpenSimulate,
 }) => {
   const { isDarkMode, toggleTheme } = useTheme();
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -37,6 +46,21 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [editSavingsTarget, setEditSavingsTarget] = useState<string>(
     userProfile.monthlySavingsTarget?.toString() || '0'
   );
+
+  const [osApiKey, setOsApiKey] = useState<string>(
+    () => localStorage.getItem('ft_os_llm_api_key') || ''
+  );
+  const [osProvider, setOsProvider] = useState<'groq' | 'openrouter'>(
+    () => (localStorage.getItem('ft_os_llm_provider') as any) || 'groq'
+  );
+  const [showKeySaved, setShowKeySaved] = useState(false);
+
+  const saveAiSettings = () => {
+    localStorage.setItem('ft_os_llm_api_key', osApiKey.trim());
+    localStorage.setItem('ft_os_llm_provider', osProvider);
+    setShowKeySaved(true);
+    setTimeout(() => setShowKeySaved(false), 2500);
+  };
 
   const saveProfile = () => {
     setUserProfile({
@@ -277,6 +301,137 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             <input type="file" accept=".json" onChange={handleImport} className="hidden" />
           </label>
         </div>
+      </div>
+
+      <div className="space-y-3">
+        <h3
+          className={`text-sm font-semibold uppercase tracking-wider px-1 ${
+            isDarkMode ? 'text-neutral-500' : 'text-gray-500'
+          }`}
+        >
+          AI & Smart Automation
+        </h3>
+
+        {/* Auto Clipboard Detection Toggle */}
+        <Card className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className={`p-2 rounded-xl ${isDarkMode ? 'bg-lime-500/10 text-lime-400' : 'bg-lime-50 text-lime-600'}`}>
+              <Sparkles size={20} />
+            </div>
+            <div>
+              <p className={`font-semibold text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                Auto-Detect Transactions
+              </p>
+              <p className="text-[11px] opacity-60">
+                Pops up approval modal when opening app after receiving bank SMS
+              </p>
+            </div>
+          </div>
+          {toggleAutoDetect && (
+            <button
+              onClick={toggleAutoDetect}
+              className={`w-12 h-6 rounded-full relative transition-colors ${
+                isAutoDetectEnabled ? 'bg-lime-500' : 'bg-gray-300'
+              }`}
+            >
+              <div
+                className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
+                  isAutoDetectEnabled ? 'left-7' : 'left-1'
+                }`}
+              />
+            </button>
+          )}
+        </Card>
+
+        {/* Test Simulator Trigger */}
+        {onOpenSimulate && (
+          <button
+            onClick={onOpenSimulate}
+            className={`w-full p-3.5 rounded-2xl border text-sm font-semibold flex items-center justify-center gap-2 transition-all ${
+              isDarkMode
+                ? 'bg-neutral-900/60 border-neutral-800 hover:bg-neutral-800 text-lime-400'
+                : 'bg-white border-gray-200 hover:bg-gray-50 text-lime-700 shadow-sm'
+            }`}
+          >
+            <Sparkles size={16} />
+            <span>Simulate / Test Auto-Detection Modal</span>
+          </button>
+        )}
+
+        {/* Open-Source LLM Configuration */}
+        <Card className="space-y-3">
+          <div className="flex items-center gap-2">
+            <div className={`p-1.5 rounded-lg ${isDarkMode ? 'bg-neutral-800 text-blue-400' : 'bg-blue-50 text-blue-600'}`}>
+              <Cpu size={16} />
+            </div>
+            <div>
+              <p className={`font-semibold text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                Free Open-Source LLM
+              </p>
+              <p className="text-[10px] opacity-60">
+                Uses local 30+ bank regex parser by default. Add free API key for Llama 3.3.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <button
+              onClick={() => setOsProvider('groq')}
+              className={`p-2 rounded-xl border font-semibold transition-all ${
+                osProvider === 'groq'
+                  ? 'border-lime-500 bg-lime-500/10 text-lime-400'
+                  : isDarkMode
+                  ? 'border-neutral-800 text-neutral-400'
+                  : 'border-gray-200 text-gray-600'
+              }`}
+            >
+              Groq (Llama 3.3)
+            </button>
+            <button
+              onClick={() => setOsProvider('openrouter')}
+              className={`p-2 rounded-xl border font-semibold transition-all ${
+                osProvider === 'openrouter'
+                  ? 'border-lime-500 bg-lime-500/10 text-lime-400'
+                  : isDarkMode
+                  ? 'border-neutral-800 text-neutral-400'
+                  : 'border-gray-200 text-gray-600'
+              }`}
+            >
+              OpenRouter (Free)
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            <input
+              type="password"
+              placeholder={`Optional: Enter free ${osProvider === 'groq' ? 'Groq' : 'OpenRouter'} API Key`}
+              value={osApiKey}
+              onChange={(e) => setOsApiKey(e.target.value)}
+              className={`w-full p-2.5 rounded-xl text-xs border outline-none font-mono ${
+                isDarkMode
+                  ? 'bg-neutral-950 border-neutral-800 text-white placeholder-neutral-600 focus:border-lime-500/50'
+                  : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400 focus:border-lime-500'
+              }`}
+            />
+            <div className="flex justify-between items-center">
+              <span className="text-[10px] opacity-50">
+                Leave blank to use built-in zero-latency local bank parser.
+              </span>
+              <button
+                onClick={saveAiSettings}
+                className="px-3 py-1 bg-lime-500 hover:bg-lime-400 text-black text-xs font-bold rounded-lg transition-all flex items-center gap-1"
+              >
+                {showKeySaved ? (
+                  <>
+                    <Check size={12} /> Saved!
+                  </>
+                ) : (
+                  'Save'
+                )}
+              </button>
+            </div>
+          </div>
+        </Card>
       </div>
 
       <div className="space-y-2">

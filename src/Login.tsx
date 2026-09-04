@@ -33,9 +33,12 @@ export const Login: React.FC<LoginProps> = ({ onLogin, theme }) => {
           btn: 'bg-lime-600 text-white hover:bg-lime-700',
         };
 
+  const [message, setMessage] = useState('');
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setMessage('');
     setLoading(true);
 
     try {
@@ -85,26 +88,27 @@ export const Login: React.FC<LoginProps> = ({ onLogin, theme }) => {
         }
 
         if (data?.user) {
-          // Create user profile in profiles table
-          const { error: profileError } = await supabase
-            .from('profiles')
-            .insert({
+          // If a session was returned (email confirmation disabled), proceed into app
+          if (data.session) {
+            // Attempt creating or updating profile in case database trigger hasn't fired
+            await supabase.from('profiles').upsert({
               id: data.user.id,
               name: formData.name,
               email: formData.email,
               monthly_savings_target: 0,
             });
 
-          if (profileError) {
-            console.error('Error creating profile:', profileError);
+            onLogin({
+              id: data.user.id,
+              name: formData.name,
+              email: formData.email,
+              joined: new Date(data.user.created_at).toLocaleDateString(),
+            });
+          } else {
+            // Email confirmation is required by Supabase project settings
+            setMessage('Account created! Please check your email to verify your account, then sign in.');
+            setIsLogin(true);
           }
-
-          onLogin({
-            id: data.user.id,
-            name: formData.name,
-            email: formData.email,
-            joined: new Date(data.user.created_at).toLocaleDateString(),
-          });
         }
       }
     } catch (err: any) {
@@ -199,6 +203,12 @@ export const Login: React.FC<LoginProps> = ({ onLogin, theme }) => {
             </div>
           )}
 
+          {message && (
+            <div className="p-3 rounded-lg bg-lime-500/10 border border-lime-500/50 text-lime-400 text-sm text-center font-medium">
+              {message}
+            </div>
+          )}
+
           <button
             type="submit"
             disabled={loading}
@@ -219,6 +229,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, theme }) => {
               onClick={() => {
                 setIsLogin(!isLogin);
                 setError('');
+                setMessage('');
               }}
               className={`ml-2 font-bold hover:underline ${t.accent}`}
               disabled={loading}

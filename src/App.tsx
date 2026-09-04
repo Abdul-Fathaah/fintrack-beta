@@ -11,18 +11,21 @@ import { SettingsTab } from './tabs/SettingsTab';
 import { FinTrackLogo } from './components/FinTrackLogo';
 import { AddTransactionModal } from './components/AddTransactionModal';
 import { ThemeContext } from './hooks/useTheme';
+import { useAutoTransactionDetector } from './hooks/useAutoTransactionDetector';
+import { TransactionApprovalModal } from './components/TransactionApprovalModal';
+import { SimulateTransactionModal } from './components/SimulateTransactionModal';
 import { Transaction, Obligation, User, UserProfile } from './types';
 import { supabase } from './utils/supabaseClient';
 
 const THEME_STORAGE_KEY = 'ft_client_theme_v1';
 
 const INITIAL_TRANSACTIONS: Transaction[] = [];
-const INITIAL_OBLIGATIONS: Obligation[] = [
-  { id: 'homeLoan', label: 'Home Loan', amount: 0, isRecurring: true },
-  { id: 'sip', label: 'SIP (Auto-Invest)', amount: 0, isRecurring: true },
-  { id: 'rent', label: 'Rent', amount: 0, isRecurring: true },
-  { id: 'internet', label: 'Internet / WiFi', amount: 0, isRecurring: true },
-  { id: 'utility', label: 'Electricity / Water', amount: 0, isRecurring: true },
+const createDefaultObligations = (): Obligation[] => [
+  { id: crypto.randomUUID(), label: 'Home Loan', amount: 0, isRecurring: true },
+  { id: crypto.randomUUID(), label: 'SIP (Auto-Invest)', amount: 0, isRecurring: true },
+  { id: crypto.randomUUID(), label: 'Rent', amount: 0, isRecurring: true },
+  { id: crypto.randomUUID(), label: 'Internet / WiFi', amount: 0, isRecurring: true },
+  { id: crypto.randomUUID(), label: 'Electricity / Water', amount: 0, isRecurring: true },
 ];
 const CATEGORIES = ['Food', 'Transport', 'Shopping', 'Bills', 'Entertainment', 'Health', 'Investment', 'Salary', 'Other'];
 
@@ -46,11 +49,83 @@ export const AppContent: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
-  const [obligations, setObligations] = useState<Obligation[]>(INITIAL_OBLIGATIONS);
+  const [obligations, setObligations] = useState<Obligation[]>(createDefaultObligations);
   const [loading, setLoading] = useState<boolean>(true);
+  const [isDataLoaded, setIsDataLoaded] = useState<boolean>(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showSimulateModal, setShowSimulateModal] = useState(false);
   const [draftTx, setDraftTx] = useState<{ amount: number | ''; text: string; type: 'income' | 'expense' | 'investment' } | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const handleAddTransaction = async (tx: Transaction) => {
+    // Optimistically add transaction to UI
+    setTransactions((prev) => [...prev, tx]);
+    if (currentUser) {
+      const { error } = await supabase.from('transactions').insert({
+        id: tx.id,
+        user_id: currentUser.id,
+        amount: tx.amount,
+        text: tx.text,
+        type: tx.type,
+        category: tx.category,
+        date: tx.date.split('T')[0],
+      });
+
+      if (error) {
+        console.error('Error inserting transaction into Supabase:', error);
+        // Rollback state if insert fails
+        setTransactions((prev) => prev.filter((t) => t.id !== tx.id));
+        setToast({
+          message: `Failed to save transaction: ${error.message || 'Database error'}`,
+          type: 'error'
+        });
+      } else {
+        setToast({
+          message: 'Transaction saved successfully',
+          type: 'success'
+        });
+      }
+    }
+  };
+
+  const handleDeleteTransaction = async (id: string) => {
+    const prev = transactions;
+    setTransactions((current) => current.filter((t) => t.id !== id));
+    if (currentUser) {
+      const { error } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', currentUser.id);
+
+      if (error) {
+        console.error('Error deleting transaction from Supabase:', error);
+        setTransactions(prev);
+        setToast({ message: `Failed to delete transaction: ${error.message}`, type: 'error' });
+      } else {
+        setToast({ message: 'Transaction deleted', type: 'success' });
+      }
+    }
+  };
+
+  // Automated Transaction Detection Hook
+  const {
+    pendingTransaction,
+    acceptPending,
+    dismissPending,
+    triggerManualDetection,
+    isAutoDetectEnabled,
+    toggleAutoDetect,
+  } = useAutoTransactionDetector(async (detectedTx) => {
+    await handleAddTransaction({
+      id: detectedTx.id,
+      amount: detectedTx.amount,
+      text: detectedTx.text,
+      type: detectedTx.type,
+      category: detectedTx.category,
+      date: detectedTx.date,
+    });
+  });
 
   useEffect(() => {
     if (toast) {
@@ -61,7 +136,7 @@ export const AppContent: React.FC = () => {
 
   // Sync profile changes to Supabase
   useEffect(() => {
-    if (!currentUser || !userProfile) return;
+    if (!currentUser || !userProfile || !isDataLoaded) return;
 
     const saveProfileData = async () => {
       await supabase.from('profiles').upsert({
@@ -72,11 +147,11 @@ export const AppContent: React.FC = () => {
       });
     };
     saveProfileData();
-  }, [userProfile, currentUser]);
+  }, [userProfile, currentUser, isDataLoaded]);
 
-  // Debounced sync for obligations changes
+  // Debounced sync for obligations changes - only syncs after initial data has loaded from Supabase
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || !isDataLoaded) return;
 
     const handler = setTimeout(async () => {
       try {
@@ -116,34 +191,52 @@ export const AppContent: React.FC = () => {
     }, 800);
 
     return () => clearTimeout(handler);
-  }, [obligations, currentUser]);
+  }, [obligations, currentUser, isDataLoaded]);
 
   const loadUserData = async (authInst: any) => {
-    setLoading(true);
-    const userObj: User = {
-      id: authInst.id,
-      name: authInst.user_metadata?.name || 'User',
-      email: authInst.email || '',
-      joined: new Date(authInst.created_at).toLocaleDateString(),
-    };
-    setCurrentUser(userObj);
+  // Early exit if invalid auth instance
+  if (!authInst?.id) {
+    console.error('Invalid auth instance received:', authInst);
+    setLoading(false);
+    setIsDataLoaded(false);
+    return;
+  }
 
+  setLoading(true);
+  setIsDataLoaded(false);
+
+  const userObj: User = {
+    id: authInst.id,
+    name: authInst.user_metadata?.name ||
+          authInst.email?.split('@')[0] ||
+          'User',
+    email: authInst.email || '',
+    joined: new Date(authInst.created_at).toLocaleDateString(),
+  };
+  setCurrentUser(userObj);
+
+  try {
+    // 1. Load Profile with isolated error handling
+    let profile: UserProfile = { name: userObj.name, email: userObj.email, monthlySavingsTarget: 0 };
     try {
-      // 1. Load Profile
-      let profile: UserProfile = { name: userObj.name, email: userObj.email, monthlySavingsTarget: 0 };
-      const { data: profileData } = await supabase
+      const { data: profileData, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', authInst.id)
         .single();
 
-      if (profileData) {
+      if (profileError && !profileError.message.includes('PGRST116')) { // Ignore "not found" errors
+        console.warn('Profile load error (continuing with defaults):', profileError);
+      } else if (profileData) {
         profile = {
           name: profileData.name,
           email: profileData.email,
-          monthlySavingsTarget: Number(profileData.monthly_savings_target) || 0,
+          monthlySavingsTarget: profileData.monthly_savings_target !== null
+                                ? Number(profileData.monthly_savings_target) || 0
+                                : 0,
         };
       } else {
+        // Profile doesn't exist - create it
         await supabase.from('profiles').insert({
           id: authInst.id,
           name: userObj.name,
@@ -151,50 +244,77 @@ export const AppContent: React.FC = () => {
           monthly_savings_target: 0,
         });
       }
-      setUserProfile(profile);
+    } catch (profileError) {
+      console.warn('Profile load failed, using defaults:', profileError);
+    }
+    setUserProfile(profile);
 
-      // 2. Load Obligations
-      const { data: obligationsData } = await supabase
+    // 2. Load Obligations with isolated error handling
+    try {
+      const { data: obligationsData, error: obligationsError } = await supabase
         .from('obligations')
         .select('*')
         .eq('user_id', authInst.id);
 
-      let loadedObligations = INITIAL_OBLIGATIONS;
-      if (obligationsData && obligationsData.length > 0) {
-        loadedObligations = obligationsData.map((o) => ({
-          id: o.id,
-          label: o.label,
-          amount: Number(o.amount) || 0,
-          isRecurring: o.is_recurring,
-        }));
-      }
-      setObligations(loadedObligations);
+      if (obligationsError) throw obligationsError;
 
-      // 3. Load Transactions
-      const { data: transactionsData } = await supabase
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const loadedObligations: Obligation[] = obligationsData && obligationsData.length > 0
+        ? obligationsData.map((o) => ({
+            id: uuidRegex.test(o.id) ? o.id : crypto.randomUUID(),
+            label: o.label || '',
+            amount: o.amount !== null ? Number(o.amount) || 0 : 0,
+            isRecurring: o.is_recurring ?? false,
+          }))
+        : createDefaultObligations();
+
+      setObligations(loadedObligations);
+    } catch (obligationsError) {
+      console.error('Failed to load obligations, using defaults:', obligationsError);
+      setObligations(createDefaultObligations());
+    }
+
+    // 3. Load Transactions with isolated error handling and safe date parsing
+    try {
+      const { data: transactionsData, error: transactionsError } = await supabase
         .from('transactions')
         .select('*')
         .eq('user_id', authInst.id)
         .order('date', { ascending: true });
 
-      let loadedTransactions = INITIAL_TRANSACTIONS;
-      if (transactionsData && transactionsData.length > 0) {
-        loadedTransactions = transactionsData.map((t) => ({
-          id: t.id,
-          amount: Number(t.amount) || 0,
-          text: t.text,
-          type: t.type as 'income' | 'expense' | 'investment',
-          category: t.category,
-          date: t.date,
-        }));
-      }
+      if (transactionsError) throw transactionsError;
+
+      const loadedTransactions: Transaction[] = transactionsData && transactionsData.length > 0
+        ? transactionsData.map((t) => ({
+            id: t.id,
+            amount: t.amount !== null ? Number(t.amount) || 0 : 0,
+            text: t.text || 'Unknown Transaction',
+            type: t.type === 'income' || t.type === 'expense' || t.type === 'investment'
+                  ? t.type
+                  : 'expense', // Default fallback
+            category: t.category || 'Other',
+            date: t.date ? new Date(t.date).toISOString().split('T')[0]
+                         : new Date().toISOString().split('T')[0], // Safe date parsing
+          }))
+        : INITIAL_TRANSACTIONS;
+
       setTransactions(loadedTransactions);
-    } catch (err) {
-      console.error('Error loading user data from Supabase:', err);
-    } finally {
-      setLoading(false);
+    } catch (transactionsError) {
+      console.error('Failed to load transactions, starting empty:', transactionsError);
+      setTransactions(INITIAL_TRANSACTIONS);
     }
-  };
+  } catch (err) {
+    console.error('Critical error in loadUserData:', err);
+    // Reset to safe state
+    setCurrentUser(null);
+    setUserProfile(null);
+    setTransactions(INITIAL_TRANSACTIONS);
+    setObligations(createDefaultObligations());
+  } finally {
+    setLoading(false);
+    setIsDataLoaded(true);
+  }
+};
 
   // Listen to Auth State Changes
   useEffect(() => {
@@ -213,7 +333,8 @@ export const AppContent: React.FC = () => {
         setCurrentUser(null);
         setUserProfile(null);
         setTransactions(INITIAL_TRANSACTIONS);
-        setObligations(INITIAL_OBLIGATIONS);
+        setObligations(createDefaultObligations());
+        setIsDataLoaded(false);
         setLoading(false);
       }
     });
@@ -232,45 +353,19 @@ export const AppContent: React.FC = () => {
     setCurrentUser(null);
     setUserProfile(null);
     setTransactions(INITIAL_TRANSACTIONS);
-    setObligations(INITIAL_OBLIGATIONS);
+    setObligations(createDefaultObligations());
+    setIsDataLoaded(false);
     setLoading(false);
     navigate('/login');
   };
 
-  const handleAddTransaction = async (tx: Transaction) => {
-    // Optimistically add transaction to UI
-    setTransactions((prev) => [...prev, tx]);
-    if (currentUser) {
-      const { error } = await supabase.from('transactions').insert({
-        id: tx.id,
-        user_id: currentUser.id,
-        amount: tx.amount,
-        text: tx.text,
-        type: tx.type,
-        category: tx.category,
-        date: tx.date.split('T')[0],
-      });
+  // Net Worth calculation: Income adds, expenses subtract, investments remain assets
+  const totalBalance = useMemo(
+    () => transactions.reduce((acc, t) => (t.type === 'income' ? acc + t.amount : t.type === 'expense' ? acc - t.amount : acc), 0),
+    [transactions]
+  );
 
-      if (error) {
-        console.error('Error inserting transaction into Supabase:', error);
-        // Rollback state if insert fails
-        setTransactions((prev) => prev.filter((t) => t.id !== tx.id));
-        setToast({
-          message: `Failed to save transaction: ${error.message || 'Database error'}`,
-          type: 'error'
-        });
-      } else {
-        setToast({
-          message: 'Transaction saved successfully',
-          type: 'success'
-        });
-      }
-    }
-  };
-
-  const totalBalance = useMemo(() => transactions.reduce((acc, t) => t.type === 'income' ? acc + t.amount : acc - t.amount, 0), [transactions]);
-
-  const handleSmartAdd = (data: { amount: number | ''; text: string; type: 'income' | 'expense' | 'investment' }) => {
+  const handleSmartAdd = (data: { amount: number | ''; text: string; type: 'income' | 'expense' | 'investment'; category?: string }) => {
     setDraftTx(data);
     setShowAddModal(true);
   };
@@ -327,13 +422,31 @@ export const AppContent: React.FC = () => {
             } />
             <Route path="/" element={<Navigate to="/home" replace />} />
             <Route path="/home" element={
-              <HomeTab transactions={transactions} totalBalance={totalBalance} obligations={obligations} monthlySavingsTarget={userProfile?.monthlySavingsTarget || 0} onSmartAdd={handleSmartAdd} />
+              <HomeTab
+                transactions={transactions}
+                totalBalance={totalBalance}
+                obligations={obligations}
+                monthlySavingsTarget={userProfile?.monthlySavingsTarget || 0}
+                onSmartAdd={handleSmartAdd}
+                onDeleteTransaction={handleDeleteTransaction}
+                onOpenSimulate={() => setShowSimulateModal(true)}
+              />
             } />
             <Route path="/analysis" element={<AnalysisTab transactions={transactions} />} />
             <Route path="/obligations" element={<DashboardTab obligations={obligations} setObligations={setObligations} />} />
             <Route path="/settings" element={
               userProfile && currentUser ? (
-                <SettingsTab userProfile={userProfile} setUserProfile={setUserProfile} logout={handleLogout} currentUser={currentUser} transactions={transactions} obligations={obligations} />
+                <SettingsTab
+                  userProfile={userProfile}
+                  setUserProfile={setUserProfile}
+                  logout={handleLogout}
+                  currentUser={currentUser}
+                  transactions={transactions}
+                  obligations={obligations}
+                  isAutoDetectEnabled={isAutoDetectEnabled}
+                  toggleAutoDetect={toggleAutoDetect}
+                  onOpenSimulate={() => setShowSimulateModal(true)}
+                />
               ) : <Navigate to="/login" replace />
             } />
             <Route path="*" element={<Navigate to="/home" replace />} />
@@ -400,6 +513,19 @@ export const AppContent: React.FC = () => {
               onAdd={handleAddTransaction}
               categories={CATEGORIES}
               initialData={draftTx}
+            />
+
+            <TransactionApprovalModal
+              transaction={pendingTransaction}
+              onAccept={acceptPending}
+              onDismiss={dismissPending}
+              categories={CATEGORIES}
+            />
+
+            <SimulateTransactionModal
+              isOpen={showSimulateModal}
+              onClose={() => setShowSimulateModal(false)}
+              onSimulate={(text) => triggerManualDetection(text)}
             />
           </>
         )}
