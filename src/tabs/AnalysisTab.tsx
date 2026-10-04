@@ -1,920 +1,596 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Lightbulb,
-  Filter,
-  TrendingUp,
-  TrendingDown,
-  Share2,
-  Download,
-  Menu,
-  ChevronDown,
-  Wallet,
-  Calculator
-} from 'lucide-react';
-import {
+  Receipt,
   PieChart,
-  Pie,
-  Cell,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  LineChart,
-  Line
-} from 'recharts';
-import { Card } from '../components/ui/Card';
+  ArrowUpRight,
+  ArrowDownRight,
+  Calendar,
+  Edit,
+  Trash2,
+  Plus,
+  CheckCircle2,
+  Circle,
+  TrendingDown,
+} from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { Transaction } from '../types';
-
-const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#8dd1e1', '#b8e986', '#ff9a76', '#d0bbff', '#fff1b8', '#edea9e'];
 
 interface AnalysisTabProps {
   transactions: Transaction[];
 }
 
-export interface CategoryData {
-  name: string;
-  value: number;
-  percentage: number;
-}
+const CATEGORIES = ['Food', 'Transport', 'Shopping', 'Bills', 'Entertainment', 'Health', 'Investment', 'Salary', 'Other'];
 
-export interface MonthlyData {
-  month: string;
-  income: number;
-  expense: number;
-}
-
-export interface TrendData {
-  date: string;
+interface FixedExpense {
+  id: string;
+  category: string;
   amount: number;
-  type: 'income' | 'expense';
+  description: string;
+  dayOfMonth: number; // 1-31
+  isActive: boolean;
 }
+
+const FIXED_EXPENSES_KEY = 'ft_fixed_expenses_v1';
+
+const DEFAULT_FIXED_EXPENSES: FixedExpense[] = [
+  { id: 'rent', category: 'Bills', amount: 15000, description: 'House Rent', dayOfMonth: 1, isActive: true },
+  { id: 'electricity', category: 'Bills', amount: 2000, description: 'Electricity Bill', dayOfMonth: 5, isActive: true },
+  { id: 'water', category: 'Bills', amount: 500, description: 'Water Bill', dayOfMonth: 7, isActive: true },
+  { id: 'internet', category: 'Bills', amount: 1000, description: 'Internet Bill', dayOfMonth: 10, isActive: true },
+  { id: 'groceries', category: 'Food', amount: 8000, description: 'Monthly Groceries', dayOfMonth: 1, isActive: true },
+];
 
 export const AnalysisTab: React.FC<AnalysisTabProps> = ({ transactions }) => {
   const { isDarkMode } = useTheme();
-  const [timeRange, setTimeRange] = useState<'week' | 'month' | 'quarter' | 'year'>('month');
-  const [chartType, setChartType] = useState<'pie' | 'bar' | 'line'>('pie');
-  const [filterCategory, setFilterCategory] = useState<string>('All');
 
-  // Filter transactions by time range
-  const filteredTransactions = useMemo(() => {
-    const now = new Date();
-    let startDate: Date;
-
-    switch (timeRange) {
-      case 'week':
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        break;
-      case 'month':
-        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-        break;
-      case 'quarter':
-        startDate = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
-        break;
-      case 'year':
-        startDate = new Date(now.getFullYear(), 0, 1);
-        break;
-      default:
-        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+  // Load / Persist fixed expenses in localStorage
+  const [fixedExpenses, setFixedExpenses] = useState<FixedExpense[]>(() => {
+    try {
+      const saved = localStorage.getItem(FIXED_EXPENSES_KEY);
+      return saved ? JSON.parse(saved) : DEFAULT_FIXED_EXPENSES;
+    } catch {
+      return DEFAULT_FIXED_EXPENSES;
     }
+  });
 
-    return transactions.filter(t => new Date(t.date) >= startDate);
-  }, [transactions, timeRange]);
+  useEffect(() => {
+    localStorage.setItem(FIXED_EXPENSES_KEY, JSON.stringify(fixedExpenses));
+  }, [fixedExpenses]);
 
-  // Get unique categories
-  const categories = useMemo(() => {
-    const cats = [...new Set(filteredTransactions.map(t => t.category))];
-    return ['All', ...cats.sort()];
-  }, [filteredTransactions]);
+  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
+  const [showAddFixedExpense, setShowAddFixedExpense] = useState(false);
+  const [newFixedExpense, setNewFixedExpense] = useState<Omit<FixedExpense, 'id' | 'isActive'>>({
+    category: 'Bills',
+    amount: 0,
+    description: '',
+    dayOfMonth: 1,
+  });
 
-  // Apply category filter
-  const categorizedTransactions = useMemo(() => {
-    if (filterCategory === 'All') return filteredTransactions;
-    return filteredTransactions.filter(t => t.category === filterCategory);
-  }, [filteredTransactions, filterCategory]);
+  const today = new Date();
+  const currentMonth = today.getMonth();
+  const currentYear = today.getFullYear();
 
-  // Category totals for pie chart
-  const categoryTotals = useMemo(() => {
-    const totals: Record<string, number> = {};
-    categorizedTransactions
-      .filter(t => t.type === 'expense')
+  // Current month actual income/expenses/investments
+  const currentMonthIncome = useMemo(
+    () =>
+      transactions
+        .filter((t) => {
+          const d = new Date(t.date);
+          return t.type === 'income' && d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+        })
+        .reduce((sum, t) => sum + t.amount, 0),
+    [transactions, currentMonth, currentYear]
+  );
+
+  const currentMonthExpense = useMemo(
+    () =>
+      transactions
+        .filter((t) => {
+          const d = new Date(t.date);
+          return t.type === 'expense' && d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+        })
+        .reduce((sum, t) => sum + t.amount, 0),
+    [transactions, currentMonth, currentYear]
+  );
+
+  const currentMonthInvestment = useMemo(
+    () =>
+      transactions
+        .filter((t) => {
+          const d = new Date(t.date);
+          return t.type === 'investment' && d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+        })
+        .reduce((sum, t) => sum + t.amount, 0),
+    [transactions, currentMonth, currentYear]
+  );
+
+  // Active fixed monthly commitments
+  const totalFixedExpenses = useMemo(
+    () =>
+      fixedExpenses
+        .filter((e) => e.isActive)
+        .reduce((sum, e) => sum + e.amount, 0),
+    [fixedExpenses]
+  );
+
+  // Net savings and rate
+  const netSavings = useMemo(
+    () => currentMonthIncome - currentMonthExpense - currentMonthInvestment - totalFixedExpenses,
+    [currentMonthIncome, currentMonthExpense, currentMonthInvestment, totalFixedExpenses]
+  );
+
+  const savingsRate = useMemo(
+    () => (currentMonthIncome > 0 ? (netSavings / currentMonthIncome) * 100 : 0),
+    [currentMonthIncome, netSavings]
+  );
+
+  // Monthly Expense Category Breakdown
+  const categoryBreakdown = useMemo(() => {
+    const catMap: Record<string, number> = {};
+    transactions
+      .filter((t) => {
+        const d = new Date(t.date);
+        return t.type === 'expense' && d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+      })
       .forEach((t) => {
-        totals[t.category] = (totals[t.category] || 0) + t.amount;
+        catMap[t.category] = (catMap[t.category] || 0) + t.amount;
       });
 
-    return Object.entries(totals)
-      .map(([name, value]) => ({
-        name,
-        value,
-        percentage: 0 // Will calculate below
-      }))
-      .sort((a, b) => b.value - a.value);
-  }, [categorizedTransactions]);
+    return Object.entries(catMap).sort((a, b) => b[1] - a[1]);
+  }, [transactions, currentMonth, currentYear]);
 
-  // Calculate percentages
-  const categoryDataWithPercentage = useMemo(() => {
-    if (categoryTotals.length === 0) return [];
-
-    const total = categoryTotals.reduce((sum, item) => sum + item.value, 0);
-    return categoryTotals.map(item => ({
-      ...item,
-        percentage: total > 0 ? (item.value / total) * 100 : 0
-    }));
-  }, [categoryTotals]);
-
-  // Monthly trend data
-  const monthlyData = useMemo(() => {
-    const months: Record<string, { income: number; expense: number }> = {};
-
-    categorizedTransactions.forEach((t) => {
-      const date = new Date(t.date);
-      const monthKey = `${date.getFullYear()}-${date.getMonth().toString().padStart(2, '0')}`;
-
-      if (!months[monthKey]) {
-        months[monthKey] = { income: 0, expense: 0 };
-      }
-
-      if (t.type === 'income') {
-        months[monthKey].income += t.amount;
-      } else if (t.type === 'expense') {
-        months[monthKey].expense += t.amount;
-      }
-    });
-
-    return Object.entries(months)
-      .map(([month, values]) => ({
-        month: new Date(`${month}-01`).toLocaleString('default', { month: 'short', year: 'numeric' }),
-        income: values.income,
-        expense: values.expense
-      }))
-      .sort((a, b) => {
-        const dateA = new Date(`1 ${a.month}`);
-        const dateB = new Date(`1 ${b.month}`);
-        return dateA.getTime() - dateB.getTime();
-      });
-  }, [categorizedTransactions]);
-
-  // Daily trend for selected time range
-  const trendData = useMemo(() => {
-    const dailyData: Record<string, { income: number; expense: number }> = {};
-
-    categorizedTransactions.forEach((t) => {
-      const date = new Date(t.date);
-      const dateKey = date.toISOString().split('T')[0];
-
-      if (!dailyData[dateKey]) {
-        dailyData[dateKey] = { income: 0, expense: 0 };
-      }
-
-      if (t.type === 'income') {
-        dailyData[dateKey].income += t.amount;
-      } else if (t.type === 'expense') {
-        dailyData[dateKey].expense += t.amount;
-      }
-    });
-
-    const incomeTrend = Object.entries(dailyData)
-      .map(([date, values]) => ({
-        date,
-        amount: values.income,
-        type: 'income' as const
-      }))
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-    const expenseTrend = Object.entries(dailyData)
-      .map(([date, values]) => ({
-        date,
-        amount: values.expense,
-        type: 'expense' as const
-      }))
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-    return [...incomeTrend, ...expenseTrend];
-  }, [categorizedTransactions]);
-
-  // Key metrics
-  const totalIncome = categorizedTransactions
-    .filter(t => t.type === 'income')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const totalExpenses = categorizedTransactions
-    .filter(t => t.type === 'expense')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const netSavings = totalIncome - totalExpenses;
-  const savingsRate = totalIncome > 0 ? (netSavings / totalIncome) * 100 : 0;
-
-  // Top expense category
-  const topExpenseCategory = categoryDataWithPercentage[0] || { name: 'None', value: 0, percentage: 0 };
-
-  // Average transaction size
-  const avgTransactionSize = categorizedTransactions.length > 0
-    ? categorizedTransactions.reduce((sum, t) => sum + t.amount, 0) / categorizedTransactions.length
-    : 0;
-
-  const renderChart = () => {
-    switch (chartType) {
-      case 'pie':
-        return (
-          <PieChart
-            width={400}
-            height={400}
-          >
-            <Pie
-              data={categoryDataWithPercentage}
-              dataKey="value"
-              nameKey="name"
-              cx="50%"
-              cy="50%"
-              innerRadius={60}
-              outerRadius={120}
-              labelLine={false}
-              label={({ name, value, percentage }: any) =>
-                `${name}\n₹${value.toLocaleString()}\n${percentage.toFixed(1)}%`
-              }
-            >
-              {categoryDataWithPercentage.map((_, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-              ))}
-            </Pie>
-            <Tooltip
-              formatter={(value: any, name: any) =>
-                `${name}: ₹${Number(value || 0).toLocaleString()}`}
-            />
-            <Legend
-              verticalAlign="top"
-              height={36}
-              wrapperStyle={{
-                left: 200,
-                top: 20
-              }}
-            />
-          </PieChart>
-        );
-      case 'bar':
-        return (
-          <BarChart
-            width={400}
-            height={300}
-            data={categoryDataWithPercentage.slice(0, 8)}
-            margin={{ top: 20, right: 30, left: 0, bottom: 5 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis
-              dataKey="name"
-              tick={{
-                fontSize: 12,
-                fill: isDarkMode ? '#ccc' : '#666'
-              }}
-            />
-            <YAxis
-              tick={{
-                fontSize: 12,
-                fill: isDarkMode ? '#ccc' : '#666'
-              }}
-            />
-            <YAxis
-              orientation="right"
-              tick={{
-                fontSize: 12,
-                fill: isDarkMode ? '#ccc' : '#666'
-              }}
-            />
-            <Tooltip
-              formatter={(value: any) => `₹${Number(value || 0).toLocaleString()}`}
-            />
-            <Legend
-              verticalAlign="top"
-              height={36}
-              wrapperStyle={{
-                left: 0,
-                top: -10
-              }}
-            />
-            <Bar
-              dataKey="value"
-              barSize={20}
-              fill={isDarkMode ? '#4ade80' : '#10b981'}
-              radius={[4, 4, 0, 0]}
-            >
-              {categoryDataWithPercentage.slice(0, 8).map((_, index) => (
-                <Cell key={`bar-${index}`} fill={COLORS[index % COLORS.length]} />
-              ))}
-            </Bar>
-          </BarChart>
-        );
-      case 'line':
-        return (
-          <LineChart
-            width={400}
-            height={300}
-            data={trendData}
-            margin={{ top: 20, right: 30, left: 0, bottom: 5 }}
-          >
-            <defs>
-              <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0" stopColor={isDarkMode ? '#4ade80' : '#10b981'} stopOpacity={0.8} />
-                <stop offset="1" stopColor={isDarkMode ? '#4ade80' : '#10b981'} stopOpacity={0} />
-              </linearGradient>
-              <linearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0" stopColor={isDarkMode ? '#f87171' : '#ef4444'} stopOpacity={0.8} />
-                <stop offset="1" stopColor={isDarkMode ? '#f87171' : '#ef4444'} stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis
-              dataKey="date"
-              tick={{
-                fontSize: 12,
-                fill: isDarkMode ? '#ccc' : '#666'
-              }}
-              tickFormatter={(date: string) => {
-                const d = new Date(date);
-                return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-              }}
-            />
-            <YAxis
-              tick={{
-                fontSize: 12,
-                fill: isDarkMode ? '#ccc' : '#666'
-              }}
-            />
-            <YAxis
-              orientation="right"
-              tick={{
-                fontSize: 12,
-                fill: isDarkMode ? '#ccc' : '#666'
-              }}
-            />
-            <Tooltip
-              formatter={(value: any) => `₹${Number(value || 0).toLocaleString()}`}
-            />
-            <Legend
-              verticalAlign="top"
-              height={36}
-              wrapperStyle={{
-                left: 0,
-                top: -10
-              }}
-            >
-              <Legend
-                verticalAlign="top"
-                height={36}
-              >
-                <Legend
-                  wrapperStyle={{
-                    left: 0,
-                    top: -10
-                  }}
-                />
-              </Legend>
-            </Legend>
-            <Line
-              type="monotone"
-              dataKey="amount"
-              stroke={isDarkMode ? '#4ade80' : '#10b981'}
-              strokeWidth={2}
-              dot={false}
-              activeDot={{ r: 6 }}
-              isAnimationActive={false}
-            >
-              {trendData.filter(d => d.type === 'income').map((entry, index) => (
-                <Dot key={'income-' + index} cx={entry.date} cy={entry.amount} r={4} fill={isDarkMode ? '#4ade80' : '#10b981'} />
-              ))}
-            </Line>
-            <Line
-              type="monotone"
-              dataKey="amount"
-              stroke={isDarkMode ? '#f87171' : '#ef4444'}
-              strokeWidth={2}
-              dot={false}
-              activeDot={{ r: 6 }}
-              isAnimationActive={false}
-            >
-              {trendData.filter(d => d.type === 'expense').map((entry, index) => (
-                <Dot key={'expense-' + index} cx={entry.date} cy={entry.amount} r={4} fill={isDarkMode ? '#f87171' : '#ef4444'} />
-              ))}
-            </Line>
-          </LineChart>
-        );
-      default:
-        return null;
+  // Actions for Fixed Expenses
+  const handleAddFixedExpense = () => {
+    if (!newFixedExpense.description || newFixedExpense.amount <= 0) {
+      alert('Please fill in a valid description and amount.');
+      return;
     }
+
+    const newExpense: FixedExpense = {
+      id: crypto.randomUUID(),
+      category: newFixedExpense.category,
+      amount: newFixedExpense.amount,
+      description: newFixedExpense.description,
+      dayOfMonth: newFixedExpense.dayOfMonth,
+      isActive: true,
+    };
+
+    setFixedExpenses((prev) => [...prev, newExpense]);
+    setShowAddFixedExpense(false);
+    setNewFixedExpense({
+      category: 'Bills',
+      amount: 0,
+      description: '',
+      dayOfMonth: 1,
+    });
   };
 
+  const handleUpdateFixedExpense = (id: string, updated: Omit<FixedExpense, 'id'>) => {
+    setFixedExpenses((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, ...updated } : item))
+    );
+    setEditingExpenseId(null);
+  };
+
+  const handleDeleteFixedExpense = (id: string) => {
+    setFixedExpenses((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  const handleToggleFixedExpense = (id: string) => {
+    setFixedExpenses((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, isActive: !item.isActive } : item))
+    );
+  };
+
+  const dm = isDarkMode;
+
   return (
-    <div className="space-y-6 pb-24 animate-fade-in">
-      <div className="flex justify-between items-center flex-wrap gap-4">
-        <div className="flex items-center gap-2">
-          <Lightbulb className="h-5 w-5 text-amber-400" />
-          <h2 className={isDarkMode ? 'text-2xl font-bold text-white' : 'text-2xl font-bold text-gray-900'}>
-            Financial Analysis
-          </h2>
+    <div className="space-y-6 pb-12">
+      {/* ── Monthly Overview Header ── */}
+      <div
+        className={`relative rounded-3xl p-6 overflow-hidden border ${
+          dm ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-gray-200 shadow-sm'
+        }`}
+      >
+        <div className="absolute top-0 right-0 w-36 h-36 bg-lime-500/10 rounded-full blur-3xl -mr-12 -mt-12 pointer-events-none" />
+
+        <div className="flex items-center gap-2 mb-4">
+          <span className="w-2 h-2 rounded-full bg-lime-400 animate-pulse" />
+          <span className={`text-[11px] font-mono tracking-widest uppercase font-semibold ${dm ? 'text-neutral-400' : 'text-gray-500'}`}>
+            Monthly Analysis • {today.toLocaleString('default', { month: 'long', year: 'numeric' })}
+          </span>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <button
-              onClick={() => setFilterCategory('All')}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-                filterCategory === 'All'
-                  ? isDarkMode
-                    ? 'bg-neutral-700 text-white'
-                    : 'bg-blue-50 text-blue-600'
-                  : isDarkMode
-                    ? 'bg-neutral-800 text-neutral-200'
-                    : 'bg-gray-100 text-gray-700'
-              }`}
+        {/* Key Metrics Grid */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* Income */}
+          <div className={`p-4 rounded-2xl border ${dm ? 'bg-neutral-950/60 border-neutral-800' : 'bg-gray-50 border-gray-200'}`}>
+            <div className="flex items-center gap-1.5 mb-1 text-lime-400">
+              <ArrowUpRight size={15} />
+              <span className={`text-[11px] font-mono uppercase tracking-wider ${dm ? 'text-neutral-400' : 'text-gray-500'}`}>Income</span>
+            </div>
+            <p className={`font-bold text-xl tabular-nums ${dm ? 'text-white' : 'text-gray-900'}`}>
+              ₹{currentMonthIncome.toLocaleString('en-IN')}
+            </p>
+          </div>
+
+          {/* Actual Expenses */}
+          <div className={`p-4 rounded-2xl border ${dm ? 'bg-neutral-950/60 border-neutral-800' : 'bg-gray-50 border-gray-200'}`}>
+            <div className="flex items-center gap-1.5 mb-1 text-red-400">
+              <ArrowDownRight size={15} />
+              <span className={`text-[11px] font-mono uppercase tracking-wider ${dm ? 'text-neutral-400' : 'text-gray-500'}`}>Variable</span>
+            </div>
+            <p className={`font-bold text-xl tabular-nums ${dm ? 'text-white' : 'text-gray-900'}`}>
+              ₹{currentMonthExpense.toLocaleString('en-IN')}
+            </p>
+          </div>
+
+          {/* Fixed Commitments */}
+          <div className={`p-4 rounded-2xl border ${dm ? 'bg-neutral-950/60 border-neutral-800' : 'bg-gray-50 border-gray-200'}`}>
+            <div className="flex items-center gap-1.5 mb-1 text-blue-400">
+              <Calendar size={15} />
+              <span className={`text-[11px] font-mono uppercase tracking-wider ${dm ? 'text-neutral-400' : 'text-gray-500'}`}>Fixed Bills</span>
+            </div>
+            <p className={`font-bold text-xl tabular-nums ${dm ? 'text-white' : 'text-gray-900'}`}>
+              ₹{totalFixedExpenses.toLocaleString('en-IN')}
+            </p>
+          </div>
+
+          {/* Net Projected Savings */}
+          <div
+            className={`p-4 rounded-2xl border ${
+              dm ? 'bg-neutral-950/60 border-neutral-800' : 'bg-gray-50 border-gray-200'
+            } ${netSavings >= 0 ? 'border-lime-500/20' : 'border-red-500/20'}`}
+          >
+            <div className="flex items-center gap-1.5 mb-1 text-purple-400">
+              <PieChart size={15} />
+              <span className={`text-[11px] font-mono uppercase tracking-wider ${dm ? 'text-neutral-400' : 'text-gray-500'}`}>Net Savings</span>
+            </div>
+            <p className={`font-bold text-xl tabular-nums ${netSavings >= 0 ? 'text-lime-400' : 'text-red-400'}`}>
+              ₹{netSavings.toLocaleString('en-IN')}
+            </p>
+            <p className={`text-[10px] mt-0.5 ${dm ? 'text-neutral-500' : 'text-gray-400'}`}>
+              {savingsRate.toFixed(1)}% of income
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Category Breakdown ── */}
+      <div className={`rounded-3xl p-5 border ${dm ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-gray-200 shadow-sm'}`}>
+        <h2 className={`font-bold text-base mb-4 flex items-center gap-2 ${dm ? 'text-white' : 'text-gray-900'}`}>
+          <Receipt size={16} className="text-lime-400" />
+          Spending by Category (This Month)
+        </h2>
+
+        {categoryBreakdown.length === 0 ? (
+          <p className={`text-xs text-center py-6 ${dm ? 'text-neutral-500' : 'text-gray-400'}`}>
+            No expenses recorded yet for this month.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {categoryBreakdown.map(([cat, amount]) => {
+              const pct = currentMonthExpense > 0 ? (amount / currentMonthExpense) * 100 : 0;
+              return (
+                <div key={cat} className="space-y-1">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className={`font-medium ${dm ? 'text-neutral-300' : 'text-gray-700'}`}>{cat}</span>
+                    <span className={`font-mono font-semibold tabular-nums ${dm ? 'text-neutral-200' : 'text-gray-900'}`}>
+                      ₹{amount.toLocaleString('en-IN')}{' '}
+                      <span className={`text-[11px] font-normal ${dm ? 'text-neutral-500' : 'text-gray-400'}`}>
+                        ({pct.toFixed(0)}%)
+                      </span>
+                    </span>
+                  </div>
+                  <div className={`w-full h-1.5 rounded-full overflow-hidden ${dm ? 'bg-neutral-800' : 'bg-gray-100'}`}>
+                    <div
+                      className="h-full bg-lime-500 rounded-full transition-all duration-300"
+                      style={{ width: `${Math.min(pct, 100)}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Fixed Expenses Management ── */}
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <div>
+            <h2 className={`font-bold text-base ${dm ? 'text-white' : 'text-gray-900'}`}>
+              Fixed Monthly Commitments
+            </h2>
+            <p className={`text-xs ${dm ? 'text-neutral-500' : 'text-gray-400'}`}>
+              Track recurring bills and liabilities
+            </p>
+          </div>
+          <button
+            onClick={() => setShowAddFixedExpense(true)}
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-lime-500 hover:bg-lime-400 text-black font-semibold rounded-full transition-all active:scale-95"
+          >
+            <Plus size={13} />
+            Add Fixed Bill
+          </button>
+        </div>
+
+        {/* Add Fixed Expense Modal / In-line Form */}
+        {showAddFixedExpense && (
+          <div className={`rounded-2xl border p-4 ${dm ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-gray-200 shadow-sm'}`}>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleAddFixedExpense();
+              }}
+              className="space-y-3"
             >
-              {filterCategory === 'All' ? 'All Categories' : filterCategory}
-              <ChevronDown size={14} className="ml-1" />
-            </button>
-            {/* Dropdown menu for categories */}
-            {filterCategory !== 'All' && (
-              <div className="absolute left-0 mt-2 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-20">
-                {categories.map((cat) => (
-                  <button
-                    key={cat}
-                    onClick={() => setFilterCategory(cat)}
-                    className={`w-full text-left px-4 py-2 hover:bg-gray-100 transition-colors`}
+              <div>
+                <label className={`block text-xs font-medium mb-1 ${dm ? 'text-neutral-400' : 'text-gray-500'}`}>
+                  Description
+                </label>
+                <input
+                  type="text"
+                  value={newFixedExpense.description}
+                  onChange={(e) => setNewFixedExpense((p) => ({ ...p, description: e.target.value }))}
+                  className={`w-full p-2.5 rounded-xl outline-none text-xs border ${
+                    dm ? 'bg-neutral-800 border-neutral-700 text-white focus:border-lime-500' : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-lime-500'
+                  }`}
+                  placeholder="e.g. Rent, Internet, Gym"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className={`block text-xs font-medium mb-1 ${dm ? 'text-neutral-400' : 'text-gray-500'}`}>
+                    Amount (₹)
+                  </label>
+                  <input
+                    type="number"
+                    value={newFixedExpense.amount || ''}
+                    onChange={(e) => setNewFixedExpense((p) => ({ ...p, amount: parseFloat(e.target.value) || 0 }))}
+                    className={`w-full p-2.5 rounded-xl outline-none text-xs border ${
+                      dm ? 'bg-neutral-800 border-neutral-700 text-white focus:border-lime-500' : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-lime-500'
+                    }`}
+                    placeholder="0"
+                  />
+                </div>
+
+                <div>
+                  <label className={`block text-xs font-medium mb-1 ${dm ? 'text-neutral-400' : 'text-gray-500'}`}>
+                    Category
+                  </label>
+                  <select
+                    value={newFixedExpense.category}
+                    onChange={(e) => setNewFixedExpense((p) => ({ ...p, category: e.target.value }))}
+                    className={`w-full p-2.5 rounded-xl outline-none text-xs border ${
+                      dm ? 'bg-neutral-800 border-neutral-700 text-white focus:border-lime-500' : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-lime-500'
+                    }`}
                   >
-                    {cat}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+                    {CATEGORIES.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-          <div className="relative">
-            <button
-              onClick={() => {
-                const ranges: Record<'week' | 'month' | 'quarter' | 'year', string> = {
-                  week: 'Week',
-                  month: 'Month',
-                  quarter: 'Quarter',
-                  year: 'Year'
-                };
-                setTimeRange(ranges[timeRange] === 'Week' ? 'month' :
-                            ranges[timeRange] === 'Month' ? 'quarter' :
-                            ranges[timeRange] === 'quarter' ? 'year' : 'week');
-              }}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-                timeRange === 'week'
-                  ? isDarkMode
-                    ? 'bg-neutral-700 text-white'
-                    : 'bg-blue-50 text-blue-600'
-                  : timeRange === 'month'
-                    ? isDarkMode
-                      ? 'bg-neutral-700 text-white'
-                      : 'bg-blue-50 text-blue-600'
-                    : timeRange === 'quarter'
-                      ? isDarkMode
-                        ? 'bg-neutral-700 text-white'
-                        : 'bg-blue-50 text-blue-600'
-                      : isDarkMode
-                        ? 'bg-neutral-700 text-white'
-                        : 'bg-blue-50 text-blue-600'
-              }`}
-            >
-              {timeRange === 'week' ? 'This Week' :
-               timeRange === 'month' ? 'This Month' :
-               timeRange === 'quarter' ? 'This Quarter' : 'This Year'}
-            </button>
-          </div>
-
-          <div className="relative">
-            <button
-              onClick={() => {
-                const types: Record<'pie' | 'bar' | 'line', string> = {
-                  pie: 'Pie Chart',
-                  bar: 'Bar Chart',
-                  line: 'Line Chart'
-                };
-                setChartType(types[chartType] === 'Pie Chart' ? 'bar' :
-                            types[chartType] === 'Bar Chart' ? 'line' : 'pie');
-              }}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-                chartType === 'pie'
-                  ? isDarkMode
-                    ? 'bg-neutral-700 text-white'
-                    : 'bg-blue-50 text-blue-600'
-                  : chartType === 'bar'
-                    ? isDarkMode
-                      ? 'bg-neutral-700 text-white'
-                      : 'bg-blue-50 text-blue-600'
-                    : isDarkMode
-                      ? 'bg-neutral-700 text-white'
-                      : 'bg-blue-50 text-blue-600'
-              }`}
-            >
-              {chartType === 'pie' ? 'Pie Chart' :
-               chartType === 'bar' ? 'Bar Chart' : 'Line Chart'}
-            </button>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => {}}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 hover:bg-gray-100"
-            >
-              <Download size={16} />
-              <span>Export Report</span>
-            </button>
-            <button
-              onClick={() => {}}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 hover:bg-gray-100"
-            >
-              <Share2 size={16} />
-              <span>Share Insights</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Key Metrics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="p-4">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-lg bg-green-500/10">
-                <TrendingUp size={18} className="text-green-400" />
-              </div>
-              <div>
-                <p className="text-xs font-medium text-gray-500">Total Income</p>
-                <p className={`text-lg font-bold mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                  ₹{totalIncome.toLocaleString()}
-                </p>
-              </div>
-            </div>
-            <div className="text-xs">
-              {totalIncome > 0 ?
-                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                  savingsRate > 0
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-red-100 text-red-800'
-                }`}>
-                  {savingsRate.toFixed(1)}% Savings Rate
-                </span> :
-                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                  No Income Data
-                </span>
-              }
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-4">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-lg bg-red-500/10">
-                <TrendingDown size={18} className="text-red-400" />
-              </div>
-              <div>
-                <p className="text-xs font-medium text-gray-500">Total Expenses</p>
-                <p className={`text-lg font-bold mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                  ₹{totalExpenses.toLocaleString()}
-                </p>
-              </div>
-            </div>
-            <div className="text-xs">
-              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                topExpenseCategory.percentage > 0
-                  ? 'bg-blue-100 text-blue-800'
-                  : 'bg-gray-100 text-gray-600'
-              }`}>
-                Top: {topExpenseCategory.name} ({topExpenseCategory.percentage.toFixed(1)}%)
-              </span>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-4">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-lg bg-indigo-500/10">
-                <Wallet size={18} className="text-indigo-400" />
-              </div>
-              <div>
-                <p className="text-xs font-medium text-gray-500">Net Savings</p>
-                <p className={`text-lg font-bold mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                  ₹{netSavings >= 0 ? netSavings.toLocaleString() : `-${Math.abs(netSavings).toLocaleString()}`}
-                </p>
-              </div>
-            </div>
-            <div className="text-xs">
-              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                netSavings >= 0
-                  ? 'bg-green-100 text-green-800'
-                  : 'bg-red-100 text-red-800'
-              }`}>
-                {netSavings >= 0 ? 'Positive' : 'Negative'} Cash Flow
-              </span>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-4">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-lg bg-purple-500/10">
-                <div className="flex items-center gap-1">
-                  <Calculator size={18} className="text-purple-400" />
-                  <span className="text-xs">₹{avgTransactionSize.toFixed(0)}</span>
+                <div>
+                  <label className={`block text-xs font-medium mb-1 ${dm ? 'text-neutral-400' : 'text-gray-500'}`}>
+                    Due Day (1-31)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="31"
+                    value={newFixedExpense.dayOfMonth}
+                    onChange={(e) => setNewFixedExpense((p) => ({ ...p, dayOfMonth: Math.max(1, Math.min(31, parseInt(e.target.value) || 1)) }))}
+                    className={`w-full p-2.5 rounded-xl outline-none text-xs border ${
+                      dm ? 'bg-neutral-800 border-neutral-700 text-white focus:border-lime-500' : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-lime-500'
+                    }`}
+                  />
                 </div>
               </div>
-              <div>
-                <p className="text-xs font-medium text-gray-500">Avg Transaction</p>
-                <p className={`text-lg font-bold mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                  ₹{avgTransactionSize.toLocaleString()}
-                </p>
+
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowAddFixedExpense(false)}
+                  className={`px-3 py-1.5 rounded-xl text-xs border ${
+                    dm ? 'bg-neutral-800 border-neutral-700 text-neutral-400 hover:bg-neutral-700' : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 rounded-xl text-xs font-bold bg-lime-500 hover:bg-lime-400 text-black active:scale-95"
+                >
+                  Save Bill
+                </button>
               </div>
-            </div>
-            <div className="text-xs">
-              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                categorizedTransactions.length > 0
-                  ? 'bg-blue-100 text-blue-800'
-                  : 'bg-gray-100 text-gray-600'
-              }`}>
-                {categorizedTransactions.length} Transactions
-              </span>
-            </div>
+            </form>
           </div>
-        </Card>
-      </div>
+        )}
 
-      {/* Charts Section */}
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Category Breakdown */}
-        <Card className="p-5">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className={isDarkMode ? 'font-semibold text-white' : 'font-semibold text-gray-900'}>
-              Expense Breakdown by Category
-            </h3>
-            <div className="flex items-center gap-2 text-sm">
-              <button
-                onClick={() => setChartType('pie')}
-                className={`px-2 py-1 rounded text-xs font-medium transition-all duration-200 ${
-                  chartType === 'pie'
-                    ? isDarkMode
-                      ? 'bg-neutral-700 text-white'
-                      : 'bg-blue-50 text-blue-600'
-                    : isDarkMode
-                      ? 'bg-neutral-800 text-neutral-200'
-                      : 'bg-gray-100 text-gray-700'
-                }`}
-              >
-                Pie
-              </button>
-              <button
-                onClick={() => setChartType('bar')}
-                className={`px-2 py-1 rounded text-xs font-medium transition-all duration-200 ${
-                  chartType === 'bar'
-                    ? isDarkMode
-                      ? 'bg-neutral-700 text-white'
-                      : 'bg-blue-50 text-blue-600'
-                    : isDarkMode
-                      ? 'bg-neutral-800 text-neutral-200'
-                      : 'bg-gray-100 text-gray-700'
-                }`}
-              >
-                Bar
-              </button>
-            </div>
-          </div>
-
-          {categoryDataWithPercentage.length > 0 ? (
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                {renderChart()}
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <p className="text-center py-8 text-xs opacity-60">
-              No expense data available for the selected period.
-            </p>
-          )}
-        </Card>
-
-        {/* Income vs Expense Trend */}
-        <Card className="p-5">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className={isDarkMode ? 'font-semibold text-white' : 'font-semibold text-gray-900'}>
-              Income vs Expense Trend
-            </h3>
-            <div className="flex items-center gap-2 text-sm">
-              <button
-                onClick={() => setChartType('line')}
-                className={`px-2 py-1 rounded text-xs font-medium transition-all duration-200 ${
-                  chartType === 'line'
-                    ? isDarkMode
-                      ? 'bg-neutral-700 text-white'
-                      : 'bg-blue-50 text-blue-600'
-                    : isDarkMode
-                      ? 'bg-neutral-800 text-neutral-200'
-                      : 'bg-gray-100 text-gray-700'
-                }`}
-              >
-                Line Chart
-              </button>
-            </div>
-          </div>
-
-          {trendData.length > 0 ? (
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                {renderChart()}
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <p className="text-center py-8 text-xs opacity-60">
-              No trend data available for the selected period.
-            </p>
-          )}
-        </Card>
-      </div>
-
-      {/* Insights Section */}
-      <Card className="p-5">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className={isDarkMode ? 'font-semibold text-white' : 'font-semibold text-gray-900'}>
-            Key Insights & Recommendations
-          </h3>
-          <button
-            onClick={() => {}}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 hover:bg-gray-100"
-          >
-            <Menu size={16} />
-            <span>More Insights</span>
-          </button>
-        </div>
-
-        <div className="space-y-4">
-          {/* Savings Insight */}
-          <div className="flex items-start gap-3 p-4 rounded-lg border">
-            <div className="flex-shrink-0">
-              <div className="p-2 rounded-lg bg-green-500/10">
-                <TrendingUp size={16} className="text-green-400" />
-              </div>
-            </div>
-            <div className="flex-1">
-              <h4 className={`font-medium mb-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                Savings Opportunity
-              </h4>
-              <p className={`text-sm ${isDarkMode ? 'text-neutral-300' : 'text-gray-600'}`}>
-                Based on your spending pattern, you could save an additional
-                <span className="font-semibold">₹{(totalExpenses * 0.1).toLocaleString()}</span>
-                monthly by reducing your top expense category ({topExpenseCategory.name}) by just 10%.
-              </p>
-            </div>
-          </div>
-
-          {/* Spending Trend Insight */}
-          <div className="flex items-start gap-3 p-4 rounded-lg border">
-            <div className="flex-shrink-0">
-              <div className="p-2 rounded-lg bg-blue-500/10">
-                <TrendingUp size={16} className="text-blue-400" />
-              </div>
-            </div>
-            <div className="flex-1">
-              <h4 className={`font-medium mb-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                Spending Trend
-              </h4>
-              <p className={`text-sm ${isDarkMode ? 'text-neutral-300' : 'text-gray-600'}`}>
-                Your {timeRange === 'week' ? 'weekly' : timeRange === 'month' ? 'monthly' : 'quarterly'}
-                spending trend shows
-                <span className="font-semibold">
-                  {monthlyData.length >= 2 ?
-                    monthlyData[monthlyData.length - 1].expense > monthlyData[monthlyData.length - 2].expense
-                      ? 'an increase'
-                      : 'a decrease'
-                    : 'stable'}
-                </span> in expenses compared to the previous period.
-              </p>
-            </div>
-          </div>
-
-          {/* Category Concentration Insight */}
-          <div className="flex items-start gap-3 p-4 rounded-lg border">
-            <div className="flex-shrink-0">
-              <div className="p-2 rounded-lg bg-purple-500/10">
-                <Lightbulb size={16} className="text-purple-400" />
-              </div>
-            </div>
-            <div className="flex-1">
-              <h4 className={`font-medium mb-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                Category Concentration
-              </h4>
-              <p className={`text-sm ${isDarkMode ? 'text-neutral-300' : 'text-gray-600'}`}>
-                Your top 3 expense categories ({categoryDataWithPercentage.slice(0, 3).map(c => c.name).join(', ')})
-                account for
-                <span className="font-semibold">
-                  {categoryDataWithPercentage.slice(0, 3).reduce((sum, c) => sum + c.percentage, 0).toFixed(1)}%
-                </span> of your total expenses.
-              </p>
-            </div>
-          </div>
-
-          {/* Income Stability Insight */}
-          <div className="flex items-start gap-3 p-4 rounded-lg border">
-            <div className="flex-shrink-0">
-              <div className="p-2 rounded-lg bg-indigo-500/10">
-                <Wallet size={16} className="text-indigo-400" />
-              </div>
-            </div>
-            <div className="flex-1">
-              <h4 className={`font-medium mb-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                Income Stability
-              </h4>
-              <p className={`text-sm ${isDarkMode ? 'text-neutral-300' : 'text-gray-600'}`}>
-                Your income shows
-                <span className="font-semibold">
-                  {monthlyData.length >= 2
-                    ? `${Math.abs(
-                        ((monthlyData[monthlyData.length - 1].income - monthlyData[monthlyData.length - 2].income) /
-                          (monthlyData[monthlyData.length - 2].income || 1)) *
-                          100
-                      ).toFixed(1)}%`
-                    : '0%'}
-                </span> month-over-month change, indicating
-                <span className="font-semibold">
-                  {monthlyData.length >= 2 && Math.abs((monthlyData[monthlyData.length - 1].income - monthlyData[monthlyData.length - 2].income) /
-                    (monthlyData[monthlyData.length - 2].income || 1) * 100) < 10
-                    ? 'stable'
-                    : 'variable'}
-                </span> income patterns.
-              </p>
-            </div>
-          </div>
-        </div>
-      </Card>
-
-      {/* Recent Transactions */}
-      <Card className="p-5">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className={isDarkMode ? 'font-semibold text-white' : 'font-semibold text-gray-900'}>
-            Recent Transactions
-          </h3>
-          <button
-            onClick={() => {}}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 hover:bg-gray-100"
-          >
-            <Filter size={16} />
-            <span>Filter</span>
-          </button>
-        </div>
-
-        <div className="space-y-3">
-          {categorizedTransactions
-            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-            .slice(0, 5)
-            .map((transaction, index) => (
-              <div
-                key={index}
-                className="p-3 rounded-lg border"
-              >
-                <div className="flex justify-between items-start mb-1">
-                  <div className="flex-1">
-                    <p className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                      {transaction.text}
-                    </p>
-                    <p className={`text-xs ${isDarkMode ? 'text-neutral-400' : 'text-gray-500'}`}>
-                      {new Date(transaction.date).toLocaleDateString()} •
-                      {transaction.category}
-                    </p>
+        {/* Fixed Expenses List */}
+        <div className="space-y-2">
+          {fixedExpenses.map((expense) => (
+            <div
+              key={expense.id}
+              className={`p-3 rounded-2xl border transition-all ${
+                dm ? 'bg-neutral-900/70 border-neutral-800/80 hover:bg-neutral-900' : 'bg-white border-gray-200 shadow-sm hover:bg-gray-50'
+              }`}
+            >
+              {editingExpenseId === expense.id ? (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleUpdateFixedExpense(expense.id, {
+                      category: expense.category,
+                      amount: expense.amount,
+                      description: expense.description,
+                      dayOfMonth: expense.dayOfMonth,
+                      isActive: expense.isActive,
+                    });
+                  }}
+                  className="space-y-2"
+                >
+                  <input
+                    type="text"
+                    value={expense.description}
+                    onChange={(e) =>
+                      setFixedExpenses((prev) =>
+                        prev.map((i) => (i.id === expense.id ? { ...i, description: e.target.value } : i))
+                      )
+                    }
+                    className={`w-full p-2 rounded-xl text-xs border ${
+                      dm ? 'bg-neutral-800 border-neutral-700 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'
+                    }`}
+                  />
+                  <div className="grid grid-cols-3 gap-2">
+                    <input
+                      type="number"
+                      value={expense.amount}
+                      onChange={(e) =>
+                        setFixedExpenses((prev) =>
+                          prev.map((i) => (i.id === expense.id ? { ...i, amount: parseFloat(e.target.value) || 0 } : i))
+                        )
+                      }
+                      className={`w-full p-2 rounded-xl text-xs border ${
+                        dm ? 'bg-neutral-800 border-neutral-700 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'
+                      }`}
+                    />
+                    <select
+                      value={expense.category}
+                      onChange={(e) =>
+                        setFixedExpenses((prev) =>
+                          prev.map((i) => (i.id === expense.id ? { ...i, category: e.target.value } : i))
+                        )
+                      }
+                      className={`w-full p-2 rounded-xl text-xs border ${
+                        dm ? 'bg-neutral-800 border-neutral-700 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'
+                      }`}
+                    >
+                      {CATEGORIES.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      min="1"
+                      max="31"
+                      value={expense.dayOfMonth}
+                      onChange={(e) =>
+                        setFixedExpenses((prev) =>
+                          prev.map((i) => (i.id === expense.id ? { ...i, dayOfMonth: parseInt(e.target.value) || 1 } : i))
+                        )
+                      }
+                      className={`w-full p-2 rounded-xl text-xs border ${
+                        dm ? 'bg-neutral-800 border-neutral-700 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'
+                      }`}
+                    />
                   </div>
-                  <div className="text-right">
-                    <p className={`font-medium ${transaction.type === 'income'
-                      ? isDarkMode
-                        ? 'text-green-400'
-                        : 'text-green-600'
-                      : isDarkMode
-                        ? 'text-red-400'
-                        : 'text-red-600'}
-                    `}>
-                      {transaction.type === 'income' ? '+' : '-'}₹{transaction.amount.toLocaleString()}
-                    </p>
+                  <div className="flex justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setEditingExpenseId(null)}
+                      className={`px-3 py-1 rounded-xl text-xs border ${
+                        dm ? 'bg-neutral-800 text-neutral-400' : 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-3 py-1 rounded-xl text-xs font-bold bg-lime-500 text-black active:scale-95"
+                    >
+                      Save
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => handleToggleFixedExpense(expense.id)}
+                      className="transition-colors"
+                      title={expense.isActive ? 'Active (Click to disable)' : 'Inactive (Click to enable)'}
+                    >
+                      {expense.isActive ? (
+                        <CheckCircle2 size={18} className="text-lime-400" />
+                      ) : (
+                        <Circle size={18} className={dm ? 'text-neutral-600' : 'text-gray-300'} />
+                      )}
+                    </button>
+                    <div>
+                      <p
+                        className={`text-xs font-semibold ${
+                          expense.isActive
+                            ? dm
+                              ? 'text-white'
+                              : 'text-gray-900'
+                            : dm
+                            ? 'text-neutral-500 line-through'
+                            : 'text-gray-400 line-through'
+                        }`}
+                      >
+                        {expense.description}
+                      </p>
+                      <span className={`text-[10px] ${dm ? 'text-neutral-500' : 'text-gray-400'}`}>
+                        Due: {expense.dayOfMonth}th • {expense.category}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`font-mono text-xs font-semibold tabular-nums ${
+                        expense.isActive ? 'text-red-400' : dm ? 'text-neutral-600' : 'text-gray-300'
+                      }`}
+                    >
+                      -₹{expense.amount.toLocaleString('en-IN')}
+                    </span>
+                    <button
+                      onClick={() => setEditingExpenseId(expense.id)}
+                      className={`p-1 rounded-lg transition-colors ${
+                        dm ? 'text-neutral-500 hover:text-neutral-300' : 'text-gray-400 hover:text-gray-700'
+                      }`}
+                      title="Edit"
+                    >
+                      <Edit size={13} />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteFixedExpense(expense.id)}
+                      className={`p-1 rounded-lg transition-colors ${
+                        dm ? 'text-neutral-500 hover:text-red-400' : 'text-gray-400 hover:text-red-500'
+                      }`}
+                      title="Delete"
+                    >
+                      <Trash2 size={13} />
+                    </button>
                   </div>
                 </div>
-                <div className="h-0.5 bg-gray-200"></div>
-              </div>
-            ))}
+              )}
+            </div>
+          ))}
 
-          {categorizedTransactions.length === 0 && (
-            <p className="text-center py-6 text-xs opacity-60">
-              No transactions found for the selected filters.
-            </p>
+          {fixedExpenses.length === 0 && (
+            <div
+              className={`text-center py-8 rounded-2xl border border-dashed text-xs ${
+                dm ? 'border-neutral-800 text-neutral-500' : 'border-gray-200 text-gray-400'
+              }`}
+            >
+              <TrendingDown size={24} className="mx-auto mb-2 opacity-40" />
+              No fixed bills listed. Add rent, utilities, or subscriptions above.
+            </div>
           )}
         </div>
-      </Card>
+      </div>
     </div>
   );
 };
 
-// Helper component for dots in line chart
-const Dot = ({ cx, cy, r, fill }: { cx: string | number; cy: string | number; r: number; fill: string }) => (
-  <circle cx={cx} cy={cy} r={r} fill={fill} />
-);
+export default AnalysisTab;

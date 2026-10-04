@@ -1,5 +1,9 @@
 import { createContext, useContext } from 'react';
-import { ThemeContextType } from '../types';
+
+export interface ThemeContextType {
+  isDarkMode: boolean;
+  toggleTheme: () => void;
+}
 
 export const ThemeContext = createContext<ThemeContextType>({
   isDarkMode: true,
